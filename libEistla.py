@@ -747,10 +747,10 @@ def raytrace( world, ray ):
         for idx in range( len( world ) ):
             if idx != current_idx:
                 dist = world[idx].bbox.intersect( current_ray )
-                print( "raytrace:: idx=", idx, "dist=", dist)
+                #print( "raytrace:: idx=", idx, "dist=", dist)
                 if dist:
                     hits.append( (idx, dist))
-        print( "hits:", hits)
+        #print( "hits:", hits)
         if len( hits ) > 0:
             sorted_hits = sorted( hits, key = lambda h: h[1])
             current_idx = sorted_hits[0][0]
@@ -788,7 +788,8 @@ def divergence_analysis( paths ):
         dotp = mean_dir ^ d
         angles.append( math.degrees( math.acos( dotp ) ) )
     
-    print( "Mean divergence:", np.mean( angles ) )
+    #print( "Mean divergence:", np.mean( angles ) )
+    return np.mean( angles )
 
 # Function to compute where two rays intersect each other
 def ray_ray_intersect( rayA, rayB ):
