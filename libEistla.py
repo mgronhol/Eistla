@@ -237,6 +237,43 @@ def reflect( segment, ray ):
 
 
 
+def grating_diffraction( segment, ray, order, lpm, transmission = True ):
+    d = 1.0/lpm
+    d *= 1e6 # mm -> nm
+    q = order * ray.wavelength / d
+
+    dotp = segment.N ^ ray.direction
+        
+    if transmission:
+        if dotp < 0:
+            Ng = -segment.N
+        else:
+            Ng = segment.N
+    else:
+        if dotp < 0:
+            Ng = segment.N
+        else:
+            Ng = -segment.N
+        
+    crossp = Ng * ray.direction
+    sini = (crossp).length()
+
+    try:
+        theta_m = math.asin( sini + q )
+    except ValueError:
+        return False    
+    
+    if crossp.z < -1e-6:
+        theta_m = -theta_m
+
+    
+    diff_dir = Ng.rotate( theta_m )
+    return Ray( ray.origin, diff_dir, n = ray.n, wavelength = ray.wavelength, L = ray.L )
+
+    
+
+
+
 # A refractive lens with two spherical surfaces
 class SphericalLens( object ):
     def __init__(self, centre, height, thickness, r1, r2, n, theta, Nsubdiv = 100 ) -> None:
@@ -524,6 +561,178 @@ class Baffle( object ):
 
     def interact( self, ray ):
         return []
+
+
+class TransmissionGrating( object ):
+    def __init__(self, centre, height, thickness, r1, theta, lpm, order, Nsubdiv = 100 ) -> None:
+        self.centre = centre
+        self.r1 = r1
+        r2 = 10000
+        if r1 < 0:
+            r2 = -r2
+        self.r2 = r2
+        self.theta = theta
+        self.height = height
+        self.thickness = thickness
+        self.lpm = lpm
+        self.order = order
+        h2 = height / 2
+        t2 = thickness / 2
+
+        phi0 = -math.atan2( h2, abs(r1) )
+        phi1 = -phi0
+        phi = phi0
+        dphi = phi1 / Nsubdiv
+        
+        
+        points = []
+
+        while phi <= phi1:
+            point = Vector( r1, 0).rotate( phi )
+            points.append( point + Vector (-r1 + 2*t2, 0) )
+            phi += dphi
+
+        phi0 = -math.atan2( h2, abs(r2) )
+        phi1 = -phi0
+        phi = phi0
+        dphi = phi1 / 10
+        
+        while phi <= phi1:
+            point = Vector( -r2, 0).rotate( phi )
+            points.append( point + Vector( r2 - 2*t2, 0) )
+            phi += dphi
+
+        self.points = []
+
+        for pt in points:
+            self.points.append( pt.rotate( theta ) + centre )
+        
+        self.bbox = BoundingBox.from_points( self.points )
+
+        self.segments = []
+        for i in range( 1, len( self.points ) ):
+            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
+        
+        self.segments.append( Segment(self.points[-1], self.points[0] ))
+
+    
+    def _interact( self, ray, skip_grating = False  ):
+        #print( "_interact:: ray=", ray)
+        idx = 0
+        mindist = 1e99
+        for i in range( len( self.segments ) ):
+            segment = self.segments[i]
+            dist = ray.intersect( segment )
+            if dist:
+                if dist < mindist:
+                    mindist = dist
+                    idx = i
+        #print( "_interact:: dbg, mindist=", mindist )
+        new_ray = ray.propagate( mindist, inplace = False )
+        #print( "_interact:: dbg, new_ray=", new_ray )
+        #print( "_interact:: idx=", idx)
+        #return reflect(self.segments[idx], new_ray ).propagate( EPS )
+        if skip_grating:
+            return new_ray.propagate( EPS )
+        else:
+            new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, transmission=True )
+            if not new_ray2:
+                new_ray.direction = Vector( 0, 0 )
+                return new_ray
+            return new_ray2.propagate( EPS )
+
+
+    def interact( self, ray ):
+        ray0 = self._interact( ray, skip_grating=False )
+        ray1 = self._interact( ray0, skip_grating=True )
+        
+        return [ray0, ray1]
+
+class ReflectionGrating( object ):
+    def __init__(self, centre, height, thickness, r1, theta, lpm, order, Nsubdiv = 100 ) -> None:
+        self.centre = centre
+        self.r1 = r1
+        r2 = 10000
+        if r1 < 0:
+            r2 = -r2
+        self.r2 = r2
+        self.theta = theta
+        self.height = height
+        self.thickness = thickness
+        self.lpm = lpm
+        self.order = order
+        h2 = height / 2
+        t2 = thickness / 2
+
+        phi0 = -math.atan2( h2, abs(r1) )
+        phi1 = -phi0
+        phi = phi0
+        dphi = phi1 / Nsubdiv
+        
+        
+        points = []
+
+        while phi <= phi1:
+            point = Vector( r1, 0).rotate( phi )
+            points.append( point + Vector (-r1 + 2*t2, 0) )
+            phi += dphi
+
+        phi0 = -math.atan2( h2, abs(r2) )
+        phi1 = -phi0
+        phi = phi0
+        dphi = phi1 / 10
+        
+        while phi <= phi1:
+            point = Vector( -r2, 0).rotate( phi )
+            points.append( point + Vector( r2 - 2*t2, 0) )
+            phi += dphi
+
+        self.points = []
+
+        for pt in points:
+            self.points.append( pt.rotate( theta ) + centre )
+        
+        self.bbox = BoundingBox.from_points( self.points )
+
+        self.segments = []
+        for i in range( 1, len( self.points ) ):
+            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
+        
+        self.segments.append( Segment(self.points[-1], self.points[0] ))
+
+    
+    def _interact( self, ray, skip_grating = False  ):
+        #print( "_interact:: ray=", ray)
+        idx = 0
+        mindist = 1e99
+        for i in range( len( self.segments ) ):
+            segment = self.segments[i]
+            dist = ray.intersect( segment )
+            if dist:
+                if dist < mindist:
+                    mindist = dist
+                    idx = i
+        #print( "_interact:: dbg, mindist=", mindist )
+        new_ray = ray.propagate( mindist, inplace = False )
+        #print( "_interact:: dbg, new_ray=", new_ray )
+        #print( "_interact:: idx=", idx)
+        #return reflect(self.segments[idx], new_ray ).propagate( EPS )
+        if skip_grating:
+            return new_ray.propagate( EPS )
+        else:
+            new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, transmission=False )
+            if not new_ray2:
+                new_ray.direction = Vector( 0, 0 )
+                return new_ray
+
+            return new_ray2.propagate( EPS )
+
+
+    def interact( self, ray ):
+        ray = self._interact( ray, skip_grating=False )
+        return [ray]
+
+
 
 
 # Traces a ray through the world (a list of optical elements)
