@@ -855,4 +855,16 @@ def focal_point_analysis( paths ):
     
     return (np.mean(Xs), np.mean(Ys)), (np.std(Xs), np.std(Ys) )
         
-    
+
+
+# Generate a wavelength-dependent refractive index funtion using Sellmeier equation
+def sellmeier_refractive_index( B1, B2, B3, C1, C2, C3 ):
+    def refractive_index( wavelength ):
+        l = wavelength / 1000 # nm -> µm
+        l2 = l * l
+
+        n2 = 1 + ( B1 * l2 ) / ( l2 - C1 ) + ( B2 * l2 ) / ( l2 - C2 ) + ( B3 * l2 ) / ( l2 - C3 )
+
+        return math.sqrt( n2 )
+
+    return refractive_index
