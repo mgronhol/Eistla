@@ -6,7 +6,7 @@ import math
 import matplotlib.pyplot as plt
 
 
-
+# Computes two rays through a single convex lens
 
 
 lens0 = SphericalLens( Vector( -10, 0), 30, 3, 40, 40, 1.33, 0 )
@@ -16,23 +16,6 @@ lens0 = SphericalLens( Vector( -10, 0), 30, 3, 40, 40, 1.33, 0 )
 
 world = [lens0]
 paths = []
-
-if False:
-    for q in range( -50, 52, 2 ):
-        print( ">>> q:", q)
-        ray = Ray( Vector( 45, q ), Vector( -1, 0))
-        path = raytrace( world, ray )
-        #print( path )
-        print( "path:")
-        for p in path:
-            print("\t", p )
-
-        dl = 1650 - path[-1].L 
-
-        last_point = path[-1].propagate(dl, inplace=False)
-
-        path.append( last_point )
-        paths.append( path )
 
 ray0 = Ray( Vector( 10, 5), Vector(-1, 0) )
 ray1 = Ray( Vector( 10, 5), Vector(-1, 0) )

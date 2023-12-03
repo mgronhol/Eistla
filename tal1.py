@@ -6,7 +6,7 @@ import math
 import matplotlib.pyplot as plt
 
 
-
+# A simple simulation of a Newtonian reflector telescope (TAL-1)
 
 mirror0 = ParabolicMirror( Vector(-800,0), 110, 10, 800, math.radians( 0 ), Nsubdiv=64 )
 mirror1 = SphericalMirror( Vector( -50, 0), 26, 2, 10000, math.radians(45))

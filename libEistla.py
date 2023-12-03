@@ -6,8 +6,11 @@ import math
 import cv2
 import numpy as np
 
+# Distance that the ray travels after interacting with a surface before new intersection round is performed
 EPS = 100e-3
 
+
+# General purpose 3D vector object, has overloaded arithmetic operators
 class Vector( object ):
 
     @staticmethod
@@ -28,6 +31,7 @@ class Vector( object ):
     def __neg__( self ):
         return Vector( -self.x, -self.y, -self.z )
 
+    # if multiplied with a scalar -> scaled vector, if multiplied with another vector -> cross product
     def __mul__( self, rhs ):
         if isinstance( rhs, int ) or isinstance( rhs, float ):
             return Vector( self.x * rhs, self.y * rhs, self.z * rhs )
@@ -38,16 +42,19 @@ class Vector( object ):
                 self.x * rhs.y - self.y * rhs.x
             )
     
+    # XOR is used to represent dot product 
     def __xor__( self, rhs ):
         return self.x * rhs.x + self.y * rhs.y + self.z * rhs.z
 
     def length( self ):
         return math.sqrt( self.x**2 + self.y**2 + self.z**2 )
 
+    # ~ operator is used to represent unit vector
     def __invert__( self ):
         l = self.length()
         return Vector( self.x / l, self.y / l , self.z / l )
 
+    # Simple 2D rotation in xy-plane
     def rotate( self, theta ):
         nx = self.x * math.cos( theta ) - self.y * math.sin( theta )
         ny = self.x * math.sin( theta ) + self.y * math.cos( theta )
@@ -63,7 +70,7 @@ class Vector( object ):
         return math.atan2( self.y, self.x )
 
 
-
+# Single line segment
 class Segment( object ):
     def __init__(self, A, B ) -> None:
         self.A = A
@@ -72,6 +79,7 @@ class Segment( object ):
         self.N = ~Vector( -self.v2.y, self.v2.x )
 
 
+# A ray of light with origin, direction and physical parameters about the light 
 class Ray( object ):
     def __init__(self, origin, direction, n = 1.0, wavelength = 550, L = 0.0 ) -> None:
         self.origin = origin
@@ -81,13 +89,14 @@ class Ray( object ):
         self.wavelength = wavelength
         self.L = L
     
+    # Set the ray to point towards a specific point
     def towards( self, point ):
         delta = point - self.origin
 
         self.direction = ~delta
         self.invdir = Vector( -self.direction.y, self.direction.x )
 
-
+    # Compute intersection point between a ray and a line segment 
     def intersect( self, segment ):
         v1 = self.origin - segment.A
         v2 = segment.v2
@@ -110,14 +119,12 @@ class Ray( object ):
         t1 = (v2 * v1).length() / dv
         t2 = (v1 ^ v3) / dv
 
-        #print( "debug, t1=", t1)
-        #print( "debug, t2=", t2)
-
         if t1 > 0:
             if 0 < t2 < 1:
                 return t1
         return False
     
+    # Propagate ray along its direction, accumulates propagated distance weighted with 1/n of current medium
     def propagate( self, dist, inplace = True ):
         if inplace:
             self.origin = self.origin + (self.direction * dist)
@@ -140,6 +147,8 @@ class Ray( object ):
     def copy( self ):
         return Ray( self.origin*1, self.direction*1, n = self.n, wavelength = self.wavelength, L = self.L )
 
+
+# A 2D bounding box, used to test if ray has a chance to hit an optical element
 class BoundingBox( object ):
 
     @staticmethod
@@ -183,7 +192,8 @@ class BoundingBox( object ):
             return False
         
         
-
+# Refraction accoring to Snell's law
+# n1 and n2 are refractive indices of the corresponding media, can be either scalar values or functions of wavelength (in nm)
 def snell( segment, ray, n1, n2 ):
     dotp = segment.N ^ ray.direction
     if dotp > 0:
@@ -204,8 +214,6 @@ def snell( segment, ray, n1, n2 ):
         _n2 = n2( ray.wavelength )
     
 
-
-
     NxS1 = N*S1
     q = math.sqrt( 1 - (_n1 / _n2)**2 * (NxS1 ^ NxS1))
     
@@ -213,7 +221,7 @@ def snell( segment, ray, n1, n2 ):
 
     return Ray( ray.origin, S2, n = _n2, wavelength = ray.wavelength, L = ray.L )
 
-
+# Reflection from a sufrace
 def reflect( segment, ray ):
     dotp = segment.N ^ ray.direction
     ndir = 1
@@ -229,8 +237,7 @@ def reflect( segment, ray ):
 
 
 
-
-
+# A refractive lens with two spherical surfaces
 class SphericalLens( object ):
     def __init__(self, centre, height, thickness, r1, r2, n, theta, Nsubdiv = 100 ) -> None:
         self.centre = centre
@@ -307,6 +314,7 @@ class SphericalLens( object ):
         return [refracted_ray0, refracted_ray1]
 
 
+# A reflective mirror with one spherical surface
 class SphericalMirror( object ):
     def __init__(self, centre, height, thickness, r1, theta, Nsubdiv = 100 ) -> None:
         self.centre = centre
@@ -381,6 +389,7 @@ class SphericalMirror( object ):
         return [reflected_ray]
 
 
+# Reflective parabolic mirror, one parabolic surface
 class ParabolicMirror( object ):
     def __init__(self, centre, height, thickness, r1, theta, Nsubdiv = 32 ) -> None:
         self.centre = centre
@@ -460,7 +469,7 @@ class ParabolicMirror( object ):
         reflected_ray = self._interact( ray )
         return [reflected_ray]
 
-
+# Rectangular baffle, stops light from passing through
 class Baffle( object ):
     def __init__(self, centre, height, thickness, theta, Nsubdiv = 10 ) -> None:
         self.centre = centre
@@ -517,7 +526,7 @@ class Baffle( object ):
         return []
 
 
-
+# Traces a ray through the world (a list of optical elements)
 def raytrace( world, ray ):
     current_idx = -1
     path = [ray.copy()]
@@ -549,7 +558,7 @@ def raytrace( world, ray ):
             done = True
     return path
 
-
+# Analyses a list of traced paths and determines the spread of angles at the end (how collimated the beams are)
 def divergence_analysis( paths ):
     dirs = []
 
@@ -572,7 +581,7 @@ def divergence_analysis( paths ):
     
     print( "Mean divergence:", np.mean( angles ) )
 
-
+# Function to compute where two rays intersect each other
 def ray_ray_intersect( rayA, rayB ):
 
     # A + da * s = B + db * t 
@@ -609,6 +618,7 @@ def ray_ray_intersect( rayA, rayB ):
     return s, t
 
 
+# Analyses a list of traced paths and determines where the beams converge and how large the convergence area is
 def focal_point_analysis( paths ):
     rays = []
 
