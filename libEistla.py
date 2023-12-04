@@ -237,7 +237,7 @@ def reflect( segment, ray ):
 
 
 
-def grating_diffraction( segment, ray, order, lpm, transmission = True ):
+def grating_diffraction( segment, ray, order, lpm, blaze_angle = 0, transmission = True ):
     d = 1.0/lpm
     d *= 1e6 # mm -> nm
     q = order * ray.wavelength / d
@@ -254,7 +254,9 @@ def grating_diffraction( segment, ray, order, lpm, transmission = True ):
             Ng = segment.N
         else:
             Ng = -segment.N
-        
+    
+    Ng = Ng.rotate( blaze_angle )
+
     crossp = Ng * ray.direction
     sini = (crossp).length()
 
