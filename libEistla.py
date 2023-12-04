@@ -874,3 +874,102 @@ def sellmeier_refractive_index( B1, B2, B3, C1, C2, C3 ):
         return math.sqrt( n2 )
 
     return refractive_index
+
+
+
+# Some glass parameters
+# from SCHOTT AG
+GLASS = {}
+GLASS["N-BK7"] = sellmeier_refractive_index( 1.03961212, 0.231792344, 1.01046945, 0.00600069867, 0.0200179144, 103.560653 )
+GLASS["N-SF2"] = sellmeier_refractive_index( 1.47343127, 0.163681849, 1.369208990, 0.01090190980, 0.0585683687, 127.4049330  )
+GLASS["N-SF8"] = sellmeier_refractive_index( 1.55075812, 0.209816918, 1.462054910, 0.01143383440, 0.0582725652, 133.2416500 )
+GLASS["N-PSK53A"] = sellmeier_refractive_index( 1.38121836, 0.196745645, 0.886089205, 0.00706416337, 0.0233251345, 97.4847345 )
+GLASS["N-LASF9"] = sellmeier_refractive_index( 2.00029547, 0.298926886, 1.806918430, 0.0121426017, 0.0538736236, 156.5308290 )
+GLASS["N-F2"] = sellmeier_refractive_index( 1.39757037, 0.159201403, 1.268654300, 0.00995906143, 0.0546931752, 119.2483460 )
+
+
+
+def read_from_zmx( fn ):
+    output = []
+    surfaces = []
+    next_distance = 0
+    current_surface = {}
+    with open( fn, 'r' ) as handle:
+        for line in handle:
+            line = line.strip().replace("\0", "")
+            if len( line ) < 1:
+                continue
+            
+            parts = line.split()
+            op = parts[0]
+            args = parts[1:]
+
+            if op == "SURF":
+                if len( current_surface ) > 0:
+                    if current_surface["diameter"] > 1e-3:
+                        surfaces.append( current_surface )
+                current_surface = {"Z": next_distance, "last": False, "diameter": -1, "conic": 0 }
+
+            elif op == "CURV":
+                current_surface["C"] = float( args[0] )
+
+            elif op ==  "DISZ":
+                if args[0] == "INFINITY":
+                    next_distance = 0
+                else:
+                    next_distance = float( args[0] )
+
+            elif op == "GLAS":
+                current_surface["glass"] = args[0]
+            
+            elif op == "DIAM":
+                current_surface["diameter"] = 2*float(args[0])
+
+            elif op == "MEMA":
+                current_surface["mechanical_diameter"] = 2*float(args[0])
+            
+            elif op == "CONI":
+                current_surface["conic"] = float(args[0])
+
+            elif op == "MAZH":
+                current_surface["last"] = True
+    
+    if len( surfaces ) == 2:
+        if surfaces[0]["glass"] == "MIRROR":
+            try:
+                R1 = 1 / surfaces[0]["C"]
+            except ZeroDivisionError:
+                R1 = 10e3
+            
+            try:
+                R2 = 1 / surfaces[1]["C"]
+            except ZeroDivisionError:
+                R2 = 10e3
+            
+            height = surfaces[0]["mechanical_diameter"]
+            thickness = surfaces[1]["Z"]
+
+            if abs(surfaces[0]["conic"] + 1) < 1e-6:
+                output.append( ParabolicMirror(Vector(0, surfaces[0]["Z"]), height, thickness, R1, 0))
+            else:
+                output.append( SphericalMirror( Vector(0, surfaces[0]["Z"]), height, thickness, R1, 0 ))
+
+        else:
+            try:
+                R1 = 1 / surfaces[0]["C"]
+            except ZeroDivisionError:
+                R1 = 10e3
+            
+            try:
+                R2 = 1 / surfaces[1]["C"]
+            except ZeroDivisionError:
+                R2 = 10e3
+            
+            height = surfaces[0]["mechanical_diameter"]
+            
+            nidx = GLASS[ surfaces[0]["glass"] ]
+            thickness = surfaces[1]["Z"]
+
+            output.append( SphericalLens(Vector( surfaces[0]["Z"], 0), height, thickness, R1, R2, nidx, 0) )
+
+    return output
