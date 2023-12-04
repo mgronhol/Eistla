@@ -889,7 +889,7 @@ GLASS["N-F2"] = sellmeier_refractive_index( 1.39757037, 0.159201403, 1.268654300
 
 
 
-def read_from_zmx( fn ):
+def read_from_zmx( fn, position, theta ):
     output = []
     surfaces = []
     next_distance = 0
@@ -950,9 +950,9 @@ def read_from_zmx( fn ):
             thickness = surfaces[1]["Z"]
 
             if abs(surfaces[0]["conic"] + 1) < 1e-6:
-                output.append( ParabolicMirror(Vector(0, surfaces[0]["Z"]), height, thickness, R1, 0))
+                output.append( ParabolicMirror(Vector(0, surfaces[0]["Z"]) + position, height, thickness, R1, theta))
             else:
-                output.append( SphericalMirror( Vector(0, surfaces[0]["Z"]), height, thickness, R1, 0 ))
+                output.append( SphericalMirror( Vector(0, surfaces[0]["Z"]) + position, height, thickness, R1, theta ))
 
         else:
             try:
@@ -970,6 +970,6 @@ def read_from_zmx( fn ):
             nidx = GLASS[ surfaces[0]["glass"] ]
             thickness = surfaces[1]["Z"]
 
-            output.append( SphericalLens(Vector( surfaces[0]["Z"], 0), height, thickness, R1, R2, nidx, 0) )
+            output.append( SphericalLens(Vector( surfaces[0]["Z"], 0) + position, height, thickness, R1, R2, nidx, theta) )
 
     return output
