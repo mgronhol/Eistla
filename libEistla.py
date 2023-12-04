@@ -129,10 +129,10 @@ class Ray( object ):
     def propagate( self, dist, inplace = True ):
         if inplace:
             self.origin = self.origin + (self.direction * dist)
-            self.L += dist / self.n
+            self.L += dist * self.n
             return self
         else:
-            return Ray( self.origin + (self.direction * dist), self.direction, n = self.n, wavelength = self.wavelength, L = self.L + dist / self.n, alive = self.alive )
+            return Ray( self.origin + (self.direction * dist), self.direction, n = self.n, wavelength = self.wavelength, L = self.L + dist * self.n, alive = self.alive )
 
     def rotate( self, theta, inplace = True ):
         if inplace:
