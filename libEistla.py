@@ -652,7 +652,7 @@ class TransmissionGrating( object ):
         return [ray0, ray1]
 
 class ReflectionGrating( object ):
-    def __init__(self, centre, height, thickness, r1, theta, lpm, order, Nsubdiv = 100 ) -> None:
+    def __init__(self, centre, height, thickness, r1, theta, lpm, order, blaze_angle = 0, Nsubdiv = 100 ) -> None:
         self.centre = centre
         self.r1 = r1
         r2 = 10000
@@ -664,6 +664,7 @@ class ReflectionGrating( object ):
         self.thickness = thickness
         self.lpm = lpm
         self.order = order
+        self.blaze_angle = blaze_angle
         h2 = height / 2
         t2 = thickness / 2
 
@@ -723,7 +724,7 @@ class ReflectionGrating( object ):
         if skip_grating:
             return new_ray.propagate( EPS )
         else:
-            new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, transmission=False )
+            new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, blaze_angle=self.blaze_angle, transmission=False )
             if not new_ray2:
                 new_ray.alive = False
                 return new_ray
