@@ -32,7 +32,10 @@ for ray in rays:
 
     dl = 70 - path[-1].L 
 
-    last_point = path[-1].propagate(dl, inplace=False)
+    if path[-1].alive:
+        last_point = path[-1].propagate(dl, inplace=False)
+    else:
+        last_point = path[-1].propagate(0, inplace=False)
 
     path.append( last_point )
     paths.append( path )

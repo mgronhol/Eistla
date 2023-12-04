@@ -26,8 +26,10 @@ for ray in rays:
     for p in path:
         print("\t", p )
 
-    
-    last_point = path[-1].propagate(20, inplace=False)
+    if path[-1].alive:
+        last_point = path[-1].propagate(20, inplace=False)
+    else:
+        last_point = path[-1].propagate(0, inplace=False)
 
     path.append( last_point )
     paths.append( path )

@@ -81,13 +81,14 @@ class Segment( object ):
 
 # A ray of light with origin, direction and physical parameters about the light 
 class Ray( object ):
-    def __init__(self, origin, direction, n = 1.0, wavelength = 550, L = 0.0 ) -> None:
+    def __init__(self, origin, direction, n = 1.0, wavelength = 550, L = 0.0, alive = True ) -> None:
         self.origin = origin
         self.direction = direction
         self.invdir = Vector( -self.direction.y, self.direction.x )
         self.n = n
         self.wavelength = wavelength
         self.L = L
+        self.alive = alive
     
     # Set the ray to point towards a specific point
     def towards( self, point ):
@@ -131,7 +132,7 @@ class Ray( object ):
             self.L += dist / self.n
             return self
         else:
-            return Ray( self.origin + (self.direction * dist), self.direction, n = self.n, wavelength = self.wavelength, L = self.L + dist / self.n )
+            return Ray( self.origin + (self.direction * dist), self.direction, n = self.n, wavelength = self.wavelength, L = self.L + dist / self.n, alive = self.alive )
 
     def rotate( self, theta, inplace = True ):
         if inplace:
@@ -139,13 +140,13 @@ class Ray( object ):
             self.invdir = Vector( -self.direction.y, self.direction.x )
             return self
         else:
-            return Ray( self.origin, self.direction.rotate( theta ), n = self.n, wavelength = self.wavelength, L = self.L )
+            return Ray( self.origin, self.direction.rotate( theta ), n = self.n, wavelength = self.wavelength, L = self.L, alive = self.alive )
 
     def __repr__( self ):
         return "Ray( origin = %s, direction = %s, n = %.2f, λ = %.1fnm, L = %.1f )" % ( self.origin, self.direction, self.n, self.wavelength, self.L )
 
     def copy( self ):
-        return Ray( self.origin*1, self.direction*1, n = self.n, wavelength = self.wavelength, L = self.L )
+        return Ray( self.origin*1, self.direction*1, n = self.n, wavelength = self.wavelength, L = self.L, alive = self.alive )
 
 
 # A 2D bounding box, used to test if ray has a chance to hit an optical element
@@ -639,7 +640,7 @@ class TransmissionGrating( object ):
         else:
             new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, transmission=True )
             if not new_ray2:
-                new_ray.direction = Vector( 0, 0 )
+                new_ray.alive = False
                 return new_ray
             return new_ray2.propagate( EPS )
 
@@ -724,7 +725,7 @@ class ReflectionGrating( object ):
         else:
             new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, transmission=False )
             if not new_ray2:
-                new_ray.direction = Vector( 0, 0 )
+                new_ray.alive = False
                 return new_ray
 
             return new_ray2.propagate( EPS )
@@ -760,7 +761,8 @@ def raytrace( world, ray ):
             if len(trace) < 1:
                 done = True
                 current_ray.propagate( sorted_hits[0][1] )
-                endray = Ray( current_ray.origin, Vector(0,0), n = current_ray.n, wavelength = current_ray.wavelength, L = current_ray.L )
+                endray = current_ray.copy()
+                endray.alive = False
                 path.append( endray )
             else:
                 path.extend( trace )
@@ -776,7 +778,7 @@ def divergence_analysis( paths ):
     for path in paths:
         last = path[-1]
         d = last.direction
-        if d.length() > 0.5:
+        if last.alive:
             dirs.append( d )
     
     mean_dir = dirs[0]
@@ -837,7 +839,7 @@ def focal_point_analysis( paths ):
     for path in paths:
         last = path[-1]
         d = last.direction
-        if d.length() > 0.5:
+        if last.alive:
             rays.append( last )
 
 
