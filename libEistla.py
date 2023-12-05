@@ -6,9 +6,6 @@ import math
 import cv2
 import numpy as np
 
-# Distance that the ray travels after interacting with a surface before new intersection round is performed
-EPS = 100e-3
-
 
 # General purpose 3D vector object, has overloaded arithmetic operators
 class Vector( object ):
@@ -78,6 +75,9 @@ class Segment( object ):
         self.v2 = B - A
         self.N = ~Vector( -self.v2.y, self.v2.x )
 
+class NormalSegment( object ):
+    def __init__(self, N) -> None:
+        self.N = N
 
 # A ray of light with origin, direction and physical parameters about the light 
 class Ray( object ):
@@ -273,469 +273,6 @@ def grating_diffraction( segment, ray, order, lpm, blaze_angle = 0, transmission
     diff_dir = Ng.rotate( theta_m )
     return Ray( ray.origin, diff_dir, n = ray.n, wavelength = ray.wavelength, L = ray.L )
 
-    
-
-
-
-# A refractive lens with two spherical surfaces
-class SphericalLens( object ):
-    def __init__(self, centre, height, thickness, r1, r2, n, theta, Nsubdiv = 100 ) -> None:
-        self.centre = centre
-        self.r1 = r1
-        self.r2 = r2
-        self.n = n
-        self.theta = theta
-        self.height = height
-        self.thickness = thickness
-        h2 = height / 2
-        t2 = thickness / 2
-
-        phi0 = -math.atan2( h2, abs(r1) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / Nsubdiv
-        
-        
-        points = []
-
-        while phi <= phi1:
-            point = Vector( r1, 0).rotate( phi )
-            points.append( point + Vector (-r1 + 2*t2, 0) )
-            phi += dphi
-
-        phi0 = -math.atan2( h2, abs(r2) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / Nsubdiv
-        
-        while phi <= phi1:
-            point = Vector( -r2, 0).rotate( phi )
-            points.append( point + Vector( r2 - 2*t2, 0) )
-            phi += dphi
-
-        self.points = []
-
-        for pt in points:
-            self.points.append( pt.rotate( theta ) + centre )
-        
-        self.bbox = BoundingBox.from_points( self.points )
-
-        self.segments = []
-        for i in range( 1, len( self.points ) ):
-            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
-        
-        self.segments.append( Segment(self.points[-1], self.points[0] ))
-
-    
-    def _interact( self, ray, from_outside = True ):
-        #print( "_interact:: ray=", ray)
-        idx = 0
-        mindist = 1e99
-        for i in range( len( self.segments ) ):
-            segment = self.segments[i]
-            dist = ray.intersect( segment )
-            if dist:
-                if dist < mindist:
-                    mindist = dist
-                    idx = i
-        #print( "_interact:: dbg, mindist=", mindist )
-        new_ray = ray.propagate( mindist, inplace = False )
-        #print( "_interact:: dbg, new_ray=", new_ray )
-        #print( "_interact:: idx=", idx)
-        if from_outside:
-            return snell(self.segments[idx], new_ray, 1.0, self.n ).propagate( EPS )
-        else:
-            return snell(self.segments[idx], new_ray, self.n, 1.0 ).propagate( EPS )
-
-
-    def interact( self, ray ):
-        refracted_ray0 = self._interact( ray, from_outside=True)
-        refracted_ray1 = self._interact( refracted_ray0, from_outside=False)
-        return [refracted_ray0, refracted_ray1]
-
-
-# A reflective mirror with one spherical surface
-class SphericalMirror( object ):
-    def __init__(self, centre, height, thickness, r1, theta, Nsubdiv = 100 ) -> None:
-        self.centre = centre
-        self.r1 = r1
-        r2 = 10000
-        if r1 < 0:
-            r2 = -r2
-        self.r2 = r2
-        self.theta = theta
-        self.height = height
-        self.thickness = thickness
-        h2 = height / 2
-        t2 = thickness / 2
-
-        phi0 = -math.atan2( h2, abs(r1) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / Nsubdiv
-        
-        
-        points = []
-
-        while phi <= phi1:
-            point = Vector( r1, 0).rotate( phi )
-            points.append( point + Vector (-r1 + 2*t2, 0) )
-            phi += dphi
-
-        phi0 = -math.atan2( h2, abs(r2) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / 10
-        
-        while phi <= phi1:
-            point = Vector( -r2, 0).rotate( phi )
-            points.append( point + Vector( r2 - 2*t2, 0) )
-            phi += dphi
-
-        self.points = []
-
-        for pt in points:
-            self.points.append( pt.rotate( theta ) + centre )
-        
-        self.bbox = BoundingBox.from_points( self.points )
-
-        self.segments = []
-        for i in range( 1, len( self.points ) ):
-            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
-        
-        self.segments.append( Segment(self.points[-1], self.points[0] ))
-
-    
-    def _interact( self, ray  ):
-        #print( "_interact:: ray=", ray)
-        idx = 0
-        mindist = 1e99
-        for i in range( len( self.segments ) ):
-            segment = self.segments[i]
-            dist = ray.intersect( segment )
-            if dist:
-                if dist < mindist:
-                    mindist = dist
-                    idx = i
-        #print( "_interact:: dbg, mindist=", mindist )
-        new_ray = ray.propagate( mindist, inplace = False )
-        #print( "_interact:: dbg, new_ray=", new_ray )
-        #print( "_interact:: idx=", idx)
-        return reflect(self.segments[idx], new_ray ).propagate( EPS )
-        
-
-    def interact( self, ray ):
-        reflected_ray = self._interact( ray )
-        return [reflected_ray]
-
-
-# Reflective parabolic mirror, one parabolic surface
-class ParabolicMirror( object ):
-    def __init__(self, centre, height, thickness, r1, theta, Nsubdiv = 32 ) -> None:
-        self.centre = centre
-        self.f1 = r1
-        r2 = 10000
-        if r1 < 0:
-            r2 = -r2
-        self.r2 = r2
-        self.theta = theta
-        self.height = height
-        self.thickness = thickness
-        h2 = height / 2
-        t2 = thickness / 2
-
-        phi0 = -math.atan2( h2, abs(r1) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1/100
-        
-        dq = math.tan(dphi) * abs(r1) / Nsubdiv
-        
-        points = []
-
-        a = 1/(4*r1)
-        y = -h2
-        while y < h2:
-            x = a*y*y
-            point = Vector( x + t2, y)
-            points.append( point )
-            y += dq
-
-
-
-        phi0 = -math.atan2( h2, abs(r2) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1/100
-        
-        while phi <= phi1:
-            point = Vector( -r2, 0).rotate( phi )
-            points.append( point + Vector( r2 - 2*t2, 0) )
-            phi += dphi
-
-        self.points = []
-
-        for pt in points:
-            self.points.append( pt.rotate( theta ) + centre )
-        
-        self.bbox = BoundingBox.from_points( self.points )
-
-        self.segments = []
-        for i in range( 1, len( self.points ) ):
-            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
-        
-        self.segments.append( Segment(self.points[-1], self.points[0] ))
-
-    
-    def _interact( self, ray  ):
-        #print( "_interact:: ray=", ray)
-        idx = 0
-        mindist = 1e99
-        for i in range( len( self.segments ) ):
-            segment = self.segments[i]
-            dist = ray.intersect( segment )
-            if dist:
-                if dist < mindist:
-                    mindist = dist
-                    idx = i
-        #print( "_interact:: dbg, mindist=", mindist )
-        new_ray = ray.propagate( mindist, inplace = False )
-        #print( "_interact:: dbg, new_ray=", new_ray )
-        #print( "_interact:: idx=", idx)
-        return reflect(self.segments[idx], new_ray ).propagate( EPS )
-        
-
-    def interact( self, ray ):
-        reflected_ray = self._interact( ray )
-        return [reflected_ray]
-
-# Rectangular baffle, stops light from passing through
-class Baffle( object ):
-    def __init__(self, centre, height, thickness, theta, Nsubdiv = 10 ) -> None:
-        self.centre = centre
-        r1 = 10000
-        self.r1 = r1
-        r2 = 10000
-        if r1 < 0:
-            r2 = -r2
-        self.r2 = r2
-        self.theta = theta
-        self.height = height
-        self.thickness = thickness
-        h2 = height / 2
-        t2 = thickness / 2
-
-        phi0 = -math.atan2( h2, abs(r1) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / Nsubdiv
-        
-        
-        points = []
-
-        while phi <= phi1:
-            point = Vector( r1, 0).rotate( phi )
-            points.append( point + Vector (-r1 + 2*t2, 0) )
-            phi += dphi
-
-        phi0 = -math.atan2( h2, abs(r2) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / 10
-        
-        while phi <= phi1:
-            point = Vector( -r2, 0).rotate( phi )
-            points.append( point + Vector( r2 - 2*t2, 0) )
-            phi += dphi
-
-        self.points = []
-
-        for pt in points:
-            self.points.append( pt.rotate( theta ) + centre )
-        
-        self.bbox = BoundingBox.from_points( self.points )
-
-        self.segments = []
-        for i in range( 1, len( self.points ) ):
-            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
-        
-        self.segments.append( Segment(self.points[-1], self.points[0] ))
-        
-
-    def interact( self, ray ):
-        return []
-
-
-class TransmissionGrating( object ):
-    def __init__(self, centre, height, thickness, r1, theta, lpm, order, Nsubdiv = 100 ) -> None:
-        self.centre = centre
-        self.r1 = r1
-        r2 = 10000
-        if r1 < 0:
-            r2 = -r2
-        self.r2 = r2
-        self.theta = theta
-        self.height = height
-        self.thickness = thickness
-        self.lpm = lpm
-        self.order = order
-        h2 = height / 2
-        t2 = thickness / 2
-
-        phi0 = -math.atan2( h2, abs(r1) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / Nsubdiv
-        
-        
-        points = []
-
-        while phi <= phi1:
-            point = Vector( r1, 0).rotate( phi )
-            points.append( point + Vector (-r1 + 2*t2, 0) )
-            phi += dphi
-
-        phi0 = -math.atan2( h2, abs(r2) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / 10
-        
-        while phi <= phi1:
-            point = Vector( -r2, 0).rotate( phi )
-            points.append( point + Vector( r2 - 2*t2, 0) )
-            phi += dphi
-
-        self.points = []
-
-        for pt in points:
-            self.points.append( pt.rotate( theta ) + centre )
-        
-        self.bbox = BoundingBox.from_points( self.points )
-
-        self.segments = []
-        for i in range( 1, len( self.points ) ):
-            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
-        
-        self.segments.append( Segment(self.points[-1], self.points[0] ))
-
-    
-    def _interact( self, ray, skip_grating = False  ):
-        #print( "_interact:: ray=", ray)
-        idx = 0
-        mindist = 1e99
-        for i in range( len( self.segments ) ):
-            segment = self.segments[i]
-            dist = ray.intersect( segment )
-            if dist:
-                if dist < mindist:
-                    mindist = dist
-                    idx = i
-        #print( "_interact:: dbg, mindist=", mindist )
-        new_ray = ray.propagate( mindist, inplace = False )
-        #print( "_interact:: dbg, new_ray=", new_ray )
-        #print( "_interact:: idx=", idx)
-        #return reflect(self.segments[idx], new_ray ).propagate( EPS )
-        if skip_grating:
-            return new_ray.propagate( EPS )
-        else:
-            new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, transmission=True )
-            if not new_ray2:
-                new_ray.alive = False
-                return new_ray
-            return new_ray2.propagate( EPS )
-
-
-    def interact( self, ray ):
-        ray0 = self._interact( ray, skip_grating=False )
-        ray1 = self._interact( ray0, skip_grating=True )
-        
-        return [ray0, ray1]
-
-class ReflectionGrating( object ):
-    def __init__(self, centre, height, thickness, r1, theta, lpm, order, blaze_angle = 0, Nsubdiv = 100 ) -> None:
-        self.centre = centre
-        self.r1 = r1
-        r2 = 10000
-        if r1 < 0:
-            r2 = -r2
-        self.r2 = r2
-        self.theta = theta
-        self.height = height
-        self.thickness = thickness
-        self.lpm = lpm
-        self.order = order
-        self.blaze_angle = blaze_angle
-        h2 = height / 2
-        t2 = thickness / 2
-
-        phi0 = -math.atan2( h2, abs(r1) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / Nsubdiv
-        
-        
-        points = []
-
-        while phi <= phi1:
-            point = Vector( r1, 0).rotate( phi )
-            points.append( point + Vector (-r1 + 2*t2, 0) )
-            phi += dphi
-
-        phi0 = -math.atan2( h2, abs(r2) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / 10
-        
-        while phi <= phi1:
-            point = Vector( -r2, 0).rotate( phi )
-            points.append( point + Vector( r2 - 2*t2, 0) )
-            phi += dphi
-
-        self.points = []
-
-        for pt in points:
-            self.points.append( pt.rotate( theta ) + centre )
-        
-        self.bbox = BoundingBox.from_points( self.points )
-
-        self.segments = []
-        for i in range( 1, len( self.points ) ):
-            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
-        
-        self.segments.append( Segment(self.points[-1], self.points[0] ))
-
-    
-    def _interact( self, ray, skip_grating = False  ):
-        #print( "_interact:: ray=", ray)
-        idx = 0
-        mindist = 1e99
-        for i in range( len( self.segments ) ):
-            segment = self.segments[i]
-            dist = ray.intersect( segment )
-            if dist:
-                if dist < mindist:
-                    mindist = dist
-                    idx = i
-        #print( "_interact:: dbg, mindist=", mindist )
-        new_ray = ray.propagate( mindist, inplace = False )
-        #print( "_interact:: dbg, new_ray=", new_ray )
-        #print( "_interact:: idx=", idx)
-        #return reflect(self.segments[idx], new_ray ).propagate( EPS )
-        if skip_grating:
-            return new_ray.propagate( EPS )
-        else:
-            new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, blaze_angle=self.blaze_angle, transmission=False )
-            if not new_ray2:
-                new_ray.alive = False
-                return new_ray
-
-            return new_ray2.propagate( EPS )
-
-
-    def interact( self, ray ):
-        ray = self._interact( ray, skip_grating=False )
-        return [ray]
-
 
 
 
@@ -758,7 +295,8 @@ def raytrace( world, ray ):
         if len( hits ) > 0:
             sorted_hits = sorted( hits, key = lambda h: h[1])
             current_idx = sorted_hits[0][0]
-            trace = world[ current_idx ].interact( current_ray )
+            next_ray = current_ray.propagate( sorted_hits[0][1], inplace = False )
+            trace = world[ current_idx ].interact( next_ray )
             if len(trace) < 1:
                 done = True
                 current_ray.propagate( sorted_hits[0][1] )
@@ -889,6 +427,521 @@ GLASS["N-F2"] = sellmeier_refractive_index( 1.39757037, 0.159201403, 1.268654300
 
 
 
+
+class ConicFunctions( object ):
+    @staticmethod
+    def conic_z( x, y, k, c ):
+        r = x**2 + y**2
+        return c*r / ( 1 + math.sqrt( 1 - (1 + k)*c*c*r ) )
+
+    @staticmethod
+    def error_func( ray, q, k, c ):
+        new_ray = ray.propagate(q, inplace = False)
+        #print( "error_func, new_ray:", new_ray )
+        rx = new_ray.origin.x
+        ry = new_ray.origin.y
+        rz = new_ray.origin.z
+
+        cz = ConicFunctions.conic_z( rz, ry, k, c )
+        return cz - rx
+
+    @staticmethod
+    def diff_error_func( ray, q, k, c ):
+        error0 = ConicFunctions.error_func( ray, q - 1e-3, k, c )
+        error1 = ConicFunctions.error_func( ray, q + 1e-3, k, c )
+
+        
+        #print( "error0:", error0, "error1:", error1)
+
+        return (error1 - error0) / (2e-3)
+
+    @staticmethod
+    def find_intersection( ray, k, c, eps=1e-3 ):
+        q = 0
+
+        for i in range( 16 ):
+            A = ConicFunctions.error_func( ray, q, k, c )
+            B = ConicFunctions.diff_error_func( ray, q, k, c )
+            #print( "debug, A:", A, "B:", B)
+            q = q - A / B
+            #print( "-->%i: A=%.3f B=%.3f q=%.3f"%(i,A, B, q))
+            if abs(A) < eps:
+                break
+        return q
+        
+
+
+    @staticmethod
+    def rodrigues_rotation( k, v, theta ):
+        return (v * math.cos(theta)) + ((k*v)*math.sin(theta)) + k*((k^v)*(1-math.cos(theta)))
+
+    @staticmethod
+    def compute_normal( pos, k, c ):
+        e = 1e-3
+        h_z0 = ConicFunctions.conic_z( pos.z, pos.y-e, k, c )
+        h_z1 = ConicFunctions.conic_z( pos.z, pos.y+e, k, c )
+
+        v_z0 = ConicFunctions.conic_z( pos.z-e, pos.y, k, c )
+        v_z1 = ConicFunctions.conic_z( pos.z+e, pos.y, k, c )
+
+        vec_h = Vector( pos.x, pos.y+e, h_z1) - Vector( pos.x, pos.y-e, h_z0)
+        vec_v = Vector( pos.x+e, pos.y, v_z1) - Vector( pos.x-e, pos.y, v_z0)
+
+        n = ~(vec_h * vec_v)
+        return ConicFunctions.rodrigues_rotation( Vector(0,1,0), n, math.radians(90) )
+
+
+
+# A refractive lens with two conic surfaces
+class ConicLens( object ):
+    def __init__(self, centre, height, thickness, r1, r2, k, n, theta ) -> None:
+        self.centre = centre
+        self.r1 = r1
+        self.r2 = r2
+        self.n = n
+        self.theta = theta
+        self.height = height
+        self.thickness = thickness
+        self.k = k
+        
+        h2 = height / 2
+        t2 = thickness / 2
+
+        self.lhs_centre = Vector( -t2, 0 )
+        self.rhs_centre = Vector( t2, 0)
+
+        points = []
+
+        dy = 1e-2
+
+        y = -h2
+        while y < h2:
+            x = ConicFunctions.conic_z( 0, y, self.k, 1 / r1 ) 
+            points.append( Vector( -r1*0 - t2 + x, y ) )
+            y += dy
+        
+        y = h2
+        while y > -h2:
+            x = ConicFunctions.conic_z( 0, y, self.k, 1 / r2 ) 
+            points.append( Vector(  r2*0 + t2 + x, y ) )
+            y -= dy
+        
+        self.points = []
+        for pt in points:
+            self.points.append( pt.rotate( theta ) + centre )
+        
+        self.bbox = BoundingBox.from_points( self.points )
+
+
+        self.segments = []
+        for i in range( 1, len( self.points ) ):
+            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
+        
+        self.segments.append( Segment(self.points[-1], self.points[0] ))
+        
+    
+    def _interact( self, ray, from_outside = True ):
+        iray = ray.copy()
+        iray.origin = iray.origin - self.centre
+
+        iray.origin = iray.origin.rotate( -self.theta )
+        iray.direction = iray.direction.rotate( -self.theta )
+
+        dotp = iray.direction ^ Vector(-1,0,0)
+
+        if not from_outside:
+            dotp = -dotp
+
+        if dotp < 0:
+            iray.origin = iray.origin - self.lhs_centre
+            dz = ConicFunctions.find_intersection( iray, self.k, 1/self.r1 )
+            iray.propagate( dz, inplace = True )
+            normal = ConicFunctions.compute_normal( iray.origin, self.k, 1/self.r1 )
+        else:
+            iray.origin = iray.origin - self.rhs_centre
+            dz = ConicFunctions.find_intersection( iray, self.k, 1/self.r2 )
+            iray.propagate( dz, inplace = True )
+            normal = ConicFunctions.compute_normal( iray.origin, self.k, 1/self.r2 )
+
+        contact_height = abs(iray.origin ^ Vector(0,1,0) )        
+        if contact_height > self.height/2:
+            return False
+
+
+        if from_outside:
+            new_ray = snell( NormalSegment(normal), iray, 1.0, self.n )
+        else:
+            new_ray = snell( NormalSegment(normal), iray, self.n, 1.0 )
+
+        if dotp < 0:
+            new_ray.origin = new_ray.origin + self.lhs_centre
+        else:
+            new_ray.origin = new_ray.origin + self.rhs_centre
+
+        new_ray.origin = new_ray.origin.rotate( self.theta )
+        new_ray.direction = new_ray.direction.rotate( self.theta )
+        new_ray.origin = new_ray.origin + self.centre
+
+        return new_ray
+        
+    def interact( self, ray ):
+        out = []
+        try:
+            refracted_ray0 = self._interact( ray, from_outside=True)
+            if not refracted_ray0:
+                return []
+            out.append( refracted_ray0 )
+            try:
+                refracted_ray1 = self._interact( refracted_ray0, from_outside=False)
+                if not refracted_ray1:
+                    refracted_ray0.alive = False
+                    return [refracted_ray0]
+                out.append( refracted_ray1 )
+            except ValueError:
+                out[0].alive = False
+        except ValueError:
+            pass
+        return out
+
+
+class ConicMirror( object ):
+    def __init__(self, centre, height, thickness, r1, k, theta ) -> None:
+        self.centre = centre
+        self.r1 = r1
+        self.r2 = 10e4
+        r2 = self.r2
+        self.theta = theta
+        self.height = height
+        self.thickness = thickness
+        self.k = k
+        h2 = height / 2
+        t2 = thickness / 2
+
+        self.lhs_centre = Vector( -t2, 0 )
+        self.rhs_centre = Vector( t2, 0)
+
+        points = []
+
+        dy = 1e-2
+
+        y = -h2
+        while y < h2:
+            x = ConicFunctions.conic_z( 0, y, 0, 1 / r1 ) 
+            points.append( Vector( -r1*0 - t2 + x, y ) )
+            y += dy
+        
+        y = h2
+        while y > -h2:
+            x = ConicFunctions.conic_z( 0, y, 0, 1 / r2 ) 
+            points.append( Vector(  r2*0 + t2 + x, y ) )
+            y -= dy
+        
+        self.points = []
+        for pt in points:
+            self.points.append( pt.rotate( theta ) + centre )
+        
+        self.bbox = BoundingBox.from_points( self.points )
+
+
+        self.segments = []
+        for i in range( 1, len( self.points ) ):
+            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
+        
+        self.segments.append( Segment(self.points[-1], self.points[0] ))
+        
+    
+    def _interact( self, ray ):
+        iray = ray.copy()
+        iray.origin = iray.origin - self.centre
+
+        iray.origin = iray.origin.rotate( -self.theta )
+        iray.direction = iray.direction.rotate( -self.theta )
+
+        dotp = iray.direction ^ Vector(-1,0,0)
+
+        if dotp < 0:
+            iray.origin = iray.origin - self.lhs_centre
+            dz = ConicFunctions.find_intersection( iray, 0, 1/self.r1 )
+            iray.propagate( dz, inplace = True )
+            normal = ConicFunctions.compute_normal( iray.origin, 0, 1/self.r1 )
+        else:
+            iray.origin = iray.origin - self.rhs_centre
+            dz = ConicFunctions.find_intersection( iray, 0, 1/self.r2 )
+            iray.propagate( dz, inplace = True )
+            normal = ConicFunctions.compute_normal( iray.origin, 0, 1/self.r2 )
+
+        contact_height = abs(iray.origin ^ Vector(0,1,0) )
+        if contact_height > self.height/2:
+            return False
+
+        #new_ray = snell( NormalSegment(normal), iray, self.n, 1.0 )
+        new_ray = reflect( NormalSegment(normal), iray )
+
+        if dotp < 0:
+            new_ray.origin = new_ray.origin + self.lhs_centre
+        else:
+            new_ray.origin = new_ray.origin + self.rhs_centre
+
+        new_ray.origin = new_ray.origin.rotate( self.theta )
+        new_ray.direction = new_ray.direction.rotate( self.theta )
+        new_ray.origin = new_ray.origin + self.centre
+
+        return new_ray
+
+        
+    def interact( self, ray ):
+        reflected_ray = self._interact( ray )
+        if not reflected_ray:
+            return []
+        else:
+            return [reflected_ray]
+
+        
+class ReflectionGrating( object ):
+    def __init__(self, centre, height, thickness, r1, theta, lpm, order, blaze_angle = 0 ) -> None:
+        self.centre = centre
+        self.r1 = r1
+        self.r2 = 10e4
+        r2 = self.r2
+        self.theta = theta
+        self.height = height
+        self.thickness = thickness
+        self.k = 0
+        self.lpm = lpm
+        self.order = order
+        self.blaze_angle = blaze_angle
+        h2 = height / 2
+        t2 = thickness / 2
+
+        self.lhs_centre = Vector( -t2, 0 )
+        self.rhs_centre = Vector( t2, 0)
+
+        points = []
+
+        dy = 1e-2
+
+        y = -h2
+        while y < h2:
+            x = ConicFunctions.conic_z( 0, y, 0, 1 / r1 ) 
+            points.append( Vector( -r1*0 - t2 + x, y ) )
+            y += dy
+        
+        y = h2
+        while y > -h2:
+            x = ConicFunctions.conic_z( 0, y, 0, 1 / r2 ) 
+            points.append( Vector(  r2*0 + t2 + x, y ) )
+            y -= dy
+        
+        self.points = []
+        for pt in points:
+            self.points.append( pt.rotate( theta ) + centre )
+        
+        self.bbox = BoundingBox.from_points( self.points )
+
+
+        self.segments = []
+        for i in range( 1, len( self.points ) ):
+            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
+        
+        self.segments.append( Segment(self.points[-1], self.points[0] ))
+        
+    
+    def _interact( self, ray ):
+        iray = ray.copy()
+        iray.origin = iray.origin - self.centre
+
+        iray.origin = iray.origin.rotate( -self.theta )
+        iray.direction = iray.direction.rotate( -self.theta )
+
+        dotp = iray.direction ^ Vector(-1,0,0)
+
+        if dotp < 0:
+            iray.origin = iray.origin - self.lhs_centre
+            dz = ConicFunctions.find_intersection( iray, 0, 1/self.r1 )
+            iray.propagate( dz, inplace = True )
+            normal = ConicFunctions.compute_normal( iray.origin, 0, 1/self.r1 )
+        else:
+            iray.origin = iray.origin - self.rhs_centre
+            dz = ConicFunctions.find_intersection( iray, 0, 1/self.r2 )
+            iray.propagate( dz, inplace = True )
+            normal = ConicFunctions.compute_normal( iray.origin, 0, 1/self.r2 )
+
+        contact_height = abs(iray.origin ^ Vector(0,1,0) )
+        if contact_height > self.height/2:
+            return False
+
+        #new_ray = snell( NormalSegment(normal), iray, self.n, 1.0 )
+        #new_ray = reflect( NormalSegment(normal), iray )
+        new_ray = grating_diffraction( NormalSegment(normal), iray, self.order, self.lpm, self.blaze_angle, transmission=False )
+
+
+        if dotp < 0:
+            new_ray.origin = new_ray.origin + self.lhs_centre
+        else:
+            new_ray.origin = new_ray.origin + self.rhs_centre
+
+        new_ray.origin = new_ray.origin.rotate( self.theta )
+        new_ray.direction = new_ray.direction.rotate( self.theta )
+        new_ray.origin = new_ray.origin + self.centre
+
+        return new_ray
+
+        
+    def interact( self, ray ):
+        reflected_ray = self._interact( ray )
+        if not reflected_ray:
+            return []
+        else:
+            return [reflected_ray]
+
+
+class Baffle( object ):
+    def __init__(self, centre, height, thickness,  theta ) -> None:
+        self.centre = centre
+        self.r1 = 10e4
+        r1 = self.r1
+        self.r2 = 10e4
+        r2 = self.r2
+        self.theta = theta
+        self.height = height
+        self.thickness = thickness
+        self.k = 0
+        h2 = height / 2
+        t2 = thickness / 2
+
+        self.lhs_centre = Vector( -t2, 0 )
+        self.rhs_centre = Vector( t2, 0)
+
+        points = []
+
+        dy = 1e-2
+
+        y = -h2
+        while y < h2:
+            x = ConicFunctions.conic_z( 0, y, 0, 1 / r1 ) 
+            points.append( Vector( -r1*0 - t2 + x, y ) )
+            y += dy
+        
+        y = h2
+        while y > -h2:
+            x = ConicFunctions.conic_z( 0, y, 0, 1 / r2 ) 
+            points.append( Vector(  r2*0 + t2 + x, y ) )
+            y -= dy
+        
+        self.points = []
+        for pt in points:
+            self.points.append( pt.rotate( theta ) + centre )
+        
+        self.bbox = BoundingBox.from_points( self.points )
+
+
+        self.segments = []
+        for i in range( 1, len( self.points ) ):
+            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
+        
+        self.segments.append( Segment(self.points[-1], self.points[0] ))
+        
+    
+
+        
+    def interact( self, ray ):
+        return []
+
+
+
+
+
+### Not converted to use analytical surfaces yet
+EPS = 100e-3
+class TransmissionGrating( object ):
+    def __init__(self, centre, height, thickness, r1, theta, lpm, order, Nsubdiv = 100 ) -> None:
+        self.centre = centre
+        self.r1 = r1
+        r2 = 10000
+        if r1 < 0:
+            r2 = -r2
+        self.r2 = r2
+        self.theta = theta
+        self.height = height
+        self.thickness = thickness
+        self.lpm = lpm
+        self.order = order
+        h2 = height / 2
+        t2 = thickness / 2
+
+        phi0 = -math.atan2( h2, abs(r1) )
+        phi1 = -phi0
+        phi = phi0
+        dphi = phi1 / Nsubdiv
+        
+        
+        points = []
+
+        while phi <= phi1:
+            point = Vector( r1, 0).rotate( phi )
+            points.append( point + Vector (-r1 + 2*t2, 0) )
+            phi += dphi
+
+        phi0 = -math.atan2( h2, abs(r2) )
+        phi1 = -phi0
+        phi = phi0
+        dphi = phi1 / 10
+        
+        while phi <= phi1:
+            point = Vector( -r2, 0).rotate( phi )
+            points.append( point + Vector( r2 - 2*t2, 0) )
+            phi += dphi
+
+        self.points = []
+
+        for pt in points:
+            self.points.append( pt.rotate( theta ) + centre )
+        
+        self.bbox = BoundingBox.from_points( self.points )
+
+        self.segments = []
+        for i in range( 1, len( self.points ) ):
+            self.segments.append( Segment( self.points[i-1], self.points[i] ) )
+        
+        self.segments.append( Segment(self.points[-1], self.points[0] ))
+
+    
+    def _interact( self, ray, skip_grating = False  ):
+        #print( "_interact:: ray=", ray)
+        idx = 0
+        mindist = 1e99
+        for i in range( len( self.segments ) ):
+            segment = self.segments[i]
+            dist = ray.intersect( segment )
+            if dist:
+                if dist < mindist:
+                    mindist = dist
+                    idx = i
+        #print( "_interact:: dbg, mindist=", mindist )
+        new_ray = ray.propagate( mindist, inplace = False )
+        #print( "_interact:: dbg, new_ray=", new_ray )
+        #print( "_interact:: idx=", idx)
+        #return reflect(self.segments[idx], new_ray ).propagate( EPS )
+        if skip_grating:
+            return new_ray.propagate( EPS )
+        else:
+            new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, transmission=True )
+            if not new_ray2:
+                new_ray.alive = False
+                return new_ray
+            return new_ray2.propagate( EPS )
+
+
+    def interact( self, ray ):
+        ray0 = self._interact( ray, skip_grating=False )
+        ray1 = self._interact( ray0, skip_grating=True )
+        
+        return [ray0, ray1]
+
+
+
+
+
 def read_from_zmx( fn, position, theta ):
     output = []
     surfaces = []
@@ -949,10 +1002,11 @@ def read_from_zmx( fn, position, theta ):
             height = surfaces[0]["mechanical_diameter"]
             thickness = surfaces[1]["Z"]
 
-            if abs(surfaces[0]["conic"] + 1) < 1e-6:
-                output.append( ParabolicMirror(Vector(0, surfaces[0]["Z"]) + position, height, thickness, R1, theta))
-            else:
-                output.append( SphericalMirror( Vector(0, surfaces[0]["Z"]) + position, height, thickness, R1, theta ))
+            #if abs(surfaces[0]["conic"] + 1) < 1e-6:
+            #    output.append( ParabolicMirror(Vector(0, surfaces[0]["Z"]) + position, height, thickness, R1, theta))
+            #else:
+            #    output.append( SphericalMirror( Vector(0, surfaces[0]["Z"]) + position, height, thickness, R1, theta ))
+            output.append( ConicMirror( Vector(0, surfaces[0]["Z"]) + position, height, thickness, R1, surfaces[0]["conic"], theta ))
 
         else:
             try:
@@ -970,6 +1024,8 @@ def read_from_zmx( fn, position, theta ):
             nidx = GLASS[ surfaces[0]["glass"] ]
             thickness = surfaces[1]["Z"]
 
-            output.append( SphericalLens(Vector( surfaces[0]["Z"], 0) + position, height, thickness, R1, R2, nidx, theta) )
+            #output.append( SphericalLens(Vector( surfaces[0]["Z"], 0) + position, height, thickness, R1, R2, nidx, theta) )
+            output.append( ConicLens(Vector( surfaces[0]["Z"], 0) + position, height, thickness, R1, R2, surfaces[0]["conic"], nidx, theta) )
 
     return output
+

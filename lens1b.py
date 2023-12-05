@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 # Traces two sets of rays going through a simple two-element refractive system
 
 
-lens0 = SphericalLens( Vector( -0, 0), 50, 8, 40, 40, 1.33, 0, Nsubdiv=1024 )
-lens1 = SphericalLens( Vector( -65, 0), 30, 5, 50, 50, 1.33, 0, Nsubdiv=1024)
+lens0 = ConicLens( Vector( -0, 0), 50, 20, 40, -40, 0, 1.5, 0 )
+lens1 = ConicLens( Vector( -65, 0), 30, 8, 50, -50, 0, 1.5, 0)
 
 OPTICAL_AXIS = Ray( Vector( 0, 0), Vector( -1, 0 ) )
 
@@ -66,7 +66,7 @@ for elem in world:
     
 
     #plt.plot( X, Y, 'b-' )
-    if isinstance( elem, SphericalLens ):
+    if isinstance( elem, ConicLens ):
         plt.fill( X, Y, 'b' )
     elif isinstance( elem, Baffle ):
         plt.fill( X, Y, 'k' )

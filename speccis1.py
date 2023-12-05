@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 
 # A Czerny-Turner spectrometer design
 
-mirror0 = SphericalMirror( Vector( -50-3, 0), 15, 3, -55*2, math.radians(6) )
-grating0 = ReflectionGrating( Vector( -10, 10 ), 15, 3, 10000, math.radians(45 - 8), lpm = 300, order = 1 )
-mirror1 = SphericalMirror( Vector( -30, -35), 35, 3, -65*2, math.radians(80+0.85) )
+mirror0 = ConicMirror( Vector( -50-3, 0), 15, 3, -55*2,0,  math.radians(6 + 180) )
+grating0 = ReflectionGrating( Vector( -10, 10 ), 15, 3, 10000, math.radians(45 - 8 ), lpm = 300, order = 1 )
+mirror1 = ConicMirror( Vector( -30, -35), 35, 3, -65*2,0,  math.radians(80+0.85 + 180) )
 detector = Baffle( Vector( -30, 30+2.5), 40, 1, math.radians(90) )
 
 
@@ -62,7 +62,7 @@ for elem in world:
     
 
     #plt.plot( X, Y, 'b-' )
-    if isinstance( elem, SphericalLens ):
+    if isinstance( elem, ConicLens ):
         plt.fill( X, Y, 'b' )
     elif isinstance( elem, Baffle ):
         plt.fill( X, Y, 'k' )

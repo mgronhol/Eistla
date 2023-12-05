@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 
 # A simple simulation of a Newtonian reflector telescope (TAL-1)
 
-mirror0 = ParabolicMirror( Vector(-800,0), 110, 10, 800, math.radians( 0 ), Nsubdiv=64 )
-mirror1 = SphericalMirror( Vector( -50, 0), 26, 2, 10000, math.radians(45))
+mirror0 = ConicMirror( Vector(-800,0), 110, 10, -800*2, -1, math.radians( 180 ))
+mirror1 = ConicMirror( Vector( -50, 0), 26, 2, 10000,0, math.radians(45))
 baffle0 = Baffle( Vector( -30, 0), 23, 1, 0)
 
 
@@ -55,7 +55,7 @@ for elem in world:
     
 
     #plt.plot( X, Y, 'b-' )
-    if isinstance( elem, SphericalLens ):
+    if isinstance( elem, ConicLens ):
         plt.fill( X, Y, 'b' )
     elif isinstance( elem, Baffle ):
         plt.fill( X, Y, 'k' )

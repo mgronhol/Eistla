@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # Computes two rays through a single convex lens
 
 
-lens0 = SphericalLens( Vector( -10, 0), 30, 3, 40, 40, 1.33, 0 )
+lens0 = ConicLens( Vector( -10, 0), 30, 7, 40, -40, 0, 1.5, 0 )
 
 
 
@@ -59,7 +59,7 @@ for elem in world:
     
 
     #plt.plot( X, Y, 'b-' )
-    if isinstance( elem, SphericalLens ):
+    if isinstance( elem, ConicLens ):
         plt.fill( X, Y, 'b' )
     elif isinstance( elem, Baffle ):
         plt.fill( X, Y, 'k' )
