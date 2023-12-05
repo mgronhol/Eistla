@@ -814,7 +814,7 @@ class Baffle( object ):
 
         points = []
 
-        dy = 1e-2
+        dy = 1e-1
 
         y = -h2
         while y < h2:
