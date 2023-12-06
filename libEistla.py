@@ -510,6 +510,10 @@ class ConicLens( object ):
         self.lhs_centre = Vector( -t2, 0 )
         self.rhs_centre = Vector( t2, 0)
 
+        self.joined_lhs = None
+        self.joined_rhs = None
+        
+
         points = []
 
         dy = 1e-2
@@ -541,6 +545,8 @@ class ConicLens( object ):
         
     
     def _interact( self, ray, from_outside = True ):
+        LHS = 1
+        RHS = 2
         iray = ray.copy()
         iray.origin = iray.origin - self.centre
 
@@ -552,12 +558,15 @@ class ConicLens( object ):
         if not from_outside:
             dotp = -dotp
 
+        side = 0
         if dotp < 0:
+            side = LHS
             iray.origin = iray.origin - self.lhs_centre
             dz = ConicFunctions.find_intersection( iray, self.k, 1/self.r1 )
             iray.propagate( dz, inplace = True )
             normal = ConicFunctions.compute_normal( iray.origin, self.k, 1/self.r1 )
         else:
+            side = RHS
             iray.origin = iray.origin - self.rhs_centre
             dz = ConicFunctions.find_intersection( iray, self.k, 1/self.r2 )
             iray.propagate( dz, inplace = True )
@@ -569,9 +578,19 @@ class ConicLens( object ):
 
 
         if from_outside:
-            new_ray = snell( NormalSegment(normal), iray, 1.0, self.n )
+            if (side == LHS) and (self.joined_lhs is not None):
+                new_ray = iray.copy()
+            elif (side == RHS) and (self.joined_rhs is not None):
+                new_ray = iray.copy()
+            else:
+                new_ray = snell( NormalSegment(normal), iray, 1.0, self.n )
         else:
-            new_ray = snell( NormalSegment(normal), iray, self.n, 1.0 )
+            if (side == LHS) and (self.joined_lhs is not None):
+                new_ray = snell( NormalSegment(normal), iray, self.n, self.joined_lhs.n )
+            elif (side == RHS) and (self.joined_rhs is not None):
+                new_ray = snell( NormalSegment(normal), iray, self.n, self.joined_rhs.n )
+            else:
+                new_ray = snell( NormalSegment(normal), iray, self.n, 1.0 )
 
         if dotp < 0:
             new_ray.origin = new_ray.origin + self.lhs_centre
@@ -958,7 +977,9 @@ class TransmissionGrating( object ):
         return [ray0, ray1]
 
 
-
+def join_lens_surfaces( left, right ):
+    left.joined_rhs = right
+    right.joined_lhs = left
 
 
 def read_from_zmx( fn, position, theta ):
