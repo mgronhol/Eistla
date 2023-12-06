@@ -83,13 +83,11 @@ print( "quality:", prev_quality )
 
 
 
-detector_position = -0.5
-delta = -0.5
+detector_position = 0.0
 
-# Iterate to find better detector position
-
-for i in range( 20 ):
-    detector = Baffle( Vector( -30, 30+2.5 + detector_position), 40, 1, math.radians(90) )
+# Optimize detector position to minimize quality function
+def error_function( x ):
+    detector = Baffle( Vector( -30, 30+2.5 + x), 40, 1, math.radians(90) )
     world = [mirror0, grating0, mirror1, detector]
 
     paths = []
@@ -98,19 +96,19 @@ for i in range( 20 ):
         paths.append( path )
 
     quality = quality_function( paths )
-    dquality = quality - prev_quality
-    print( "quality:", quality, "detector position:", detector_position, "delta:", delta, "dq:", dquality )
-    alpha = 0.92
-    if quality < prev_quality:
-        detector_position += delta
-        delta = delta * alpha
-    else:
-        detector_position -= delta
-        delta = delta * alpha
+    return quality
+    
+from scipy import optimize
+result = optimize.minimize_scalar( error_function )
+print( "result:", result )
+detector = Baffle( Vector( -30, 30+2.5 + result.x), 40, 1, math.radians(90) )
+world = [mirror0, grating0, mirror1, detector]
+paths = []
+for ray in rays:
+    path = raytrace( world, ray )
+    paths.append( path )
 
-    prev_quality = quality
-
-
+    
 
 
 
