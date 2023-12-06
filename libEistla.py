@@ -851,91 +851,110 @@ class Baffle( object ):
 
 
 
-### Not converted to use analytical surfaces yet
-EPS = 100e-3
 class TransmissionGrating( object ):
-    def __init__(self, centre, height, thickness, r1, theta, lpm, order, Nsubdiv = 100 ) -> None:
+    def __init__(self, centre, height, thickness, r1, theta, lpm, order, blaze_angle = 0 ) -> None:
         self.centre = centre
         self.r1 = r1
-        r2 = 10000
-        if r1 < 0:
-            r2 = -r2
-        self.r2 = r2
+        self.r2 = 10e4
+        r2 = self.r2
         self.theta = theta
         self.height = height
         self.thickness = thickness
+        self.k = 0
         self.lpm = lpm
         self.order = order
+        self.blaze_angle = blaze_angle
         h2 = height / 2
         t2 = thickness / 2
 
-        phi0 = -math.atan2( h2, abs(r1) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / Nsubdiv
-        
-        
+        self.lhs_centre = Vector( -t2, 0 )
+        self.rhs_centre = Vector( t2, 0)
+
         points = []
 
-        while phi <= phi1:
-            point = Vector( r1, 0).rotate( phi )
-            points.append( point + Vector (-r1 + 2*t2, 0) )
-            phi += dphi
+        dy = 1e-2
 
-        phi0 = -math.atan2( h2, abs(r2) )
-        phi1 = -phi0
-        phi = phi0
-        dphi = phi1 / 10
+        y = -h2
+        while y < h2:
+            x = ConicFunctions.conic_z( 0, y, 0, 1 / r1 ) 
+            points.append( Vector( -r1*0 - t2 + x, y ) )
+            y += dy
         
-        while phi <= phi1:
-            point = Vector( -r2, 0).rotate( phi )
-            points.append( point + Vector( r2 - 2*t2, 0) )
-            phi += dphi
-
+        y = h2
+        while y > -h2:
+            x = ConicFunctions.conic_z( 0, y, 0, 1 / r2 ) 
+            points.append( Vector(  r2*0 + t2 + x, y ) )
+            y -= dy
+        
         self.points = []
-
         for pt in points:
             self.points.append( pt.rotate( theta ) + centre )
         
         self.bbox = BoundingBox.from_points( self.points )
+
 
         self.segments = []
         for i in range( 1, len( self.points ) ):
             self.segments.append( Segment( self.points[i-1], self.points[i] ) )
         
         self.segments.append( Segment(self.points[-1], self.points[0] ))
-
-    
-    def _interact( self, ray, skip_grating = False  ):
-        #print( "_interact:: ray=", ray)
-        idx = 0
-        mindist = 1e99
-        for i in range( len( self.segments ) ):
-            segment = self.segments[i]
-            dist = ray.intersect( segment )
-            if dist:
-                if dist < mindist:
-                    mindist = dist
-                    idx = i
-        #print( "_interact:: dbg, mindist=", mindist )
-        new_ray = ray.propagate( mindist, inplace = False )
-        #print( "_interact:: dbg, new_ray=", new_ray )
-        #print( "_interact:: idx=", idx)
-        #return reflect(self.segments[idx], new_ray ).propagate( EPS )
-        if skip_grating:
-            return new_ray.propagate( EPS )
-        else:
-            new_ray2 = grating_diffraction( self.segments[idx], new_ray, self.order, self.lpm, transmission=True )
-            if not new_ray2:
-                new_ray.alive = False
-                return new_ray
-            return new_ray2.propagate( EPS )
-
-
-    def interact( self, ray ):
-        ray0 = self._interact( ray, skip_grating=False )
-        ray1 = self._interact( ray0, skip_grating=True )
         
+    
+    def _interact( self, ray, skip_grating = False ):
+        iray = ray.copy()
+        iray.origin = iray.origin - self.centre
+
+        iray.origin = iray.origin.rotate( -self.theta )
+        iray.direction = iray.direction.rotate( -self.theta )
+
+        dotp = iray.direction ^ Vector(-1,0,0)
+
+        if dotp < 0:
+            iray.origin = iray.origin - self.lhs_centre
+            dz = ConicFunctions.find_intersection( iray, 0, 1/self.r1 )
+            iray.propagate( dz, inplace = True )
+            normal = ConicFunctions.compute_normal( iray.origin, 0, 1/self.r1 )
+        else:
+            iray.origin = iray.origin - self.rhs_centre
+            dz = ConicFunctions.find_intersection( iray, 0, 1/self.r2 )
+            iray.propagate( dz, inplace = True )
+            normal = ConicFunctions.compute_normal( iray.origin, 0, 1/self.r2 )
+
+        contact_height = abs(iray.origin ^ Vector(0,1,0) )
+        if contact_height > self.height/2:
+            return False
+
+        #new_ray = snell( NormalSegment(normal), iray, self.n, 1.0 )
+        #new_ray = reflect( NormalSegment(normal), iray )
+        if skip_grating:
+            new_ray = iray.copy()
+        else:
+            new_ray = grating_diffraction( NormalSegment(normal), iray, self.order, self.lpm, self.blaze_angle, transmission=True )
+
+
+        if dotp < 0:
+            new_ray.origin = new_ray.origin + self.lhs_centre
+        else:
+            new_ray.origin = new_ray.origin + self.rhs_centre
+
+        new_ray.origin = new_ray.origin.rotate( self.theta )
+        new_ray.direction = new_ray.direction.rotate( self.theta )
+        new_ray.origin = new_ray.origin + self.centre
+
+        return new_ray
+
+        
+    def interact( self, ray ):
+
+        ray0 = self._interact( ray, skip_grating=False )
+        if not ray0:
+            return []
+    
+        ray1 = self._interact( ray0, skip_grating=True )
+        if not ray1:
+            ray0.alive = False
+            return [ray0] 
+
         return [ray0, ray1]
 
 
