@@ -41,18 +41,20 @@ def quality_function( paths ):
 
 
 
+rays = []
 
-ray0 = Ray( Vector( 5, 0), Vector.from_angle(math.radians(180+5)), wavelength = 650 )
-ray1 = Ray( Vector( 5, 0), Vector.from_angle(math.radians(180-5)), wavelength = 650 )
+rays.append( Ray( Vector( 5, 0), Vector.from_angle(math.radians(180+5)), wavelength = 650 ) )
+rays.append( Ray( Vector( 5, 0), Vector.from_angle(math.radians(180)),   wavelength = 650 ) )
+rays.append( Ray( Vector( 5, 0), Vector.from_angle(math.radians(180-5)), wavelength = 650 ) )
 
-ray2 = Ray( Vector( 5, 0), Vector.from_angle(math.radians(180+5)), wavelength = 535 )
-ray3 = Ray( Vector( 5, 0), Vector.from_angle(math.radians(180-5)), wavelength = 535 )
+rays.append( Ray( Vector( 5, 0), Vector.from_angle(math.radians(180+5)), wavelength = 535 ) )
+rays.append( Ray( Vector( 5, 0), Vector.from_angle(math.radians(180)),   wavelength = 535 ) )
+rays.append( Ray( Vector( 5, 0), Vector.from_angle(math.radians(180-5)), wavelength = 535 ) )
 
-ray4 = Ray( Vector( 5, 0), Vector.from_angle(math.radians(180+5)), wavelength = 420 )
-ray5 = Ray( Vector( 5, 0), Vector.from_angle(math.radians(180-5)), wavelength = 420 )
+rays.append( Ray( Vector( 5, 0), Vector.from_angle(math.radians(180+5)), wavelength = 420 ) )
+rays.append( Ray( Vector( 5, 0), Vector.from_angle(math.radians(180)),   wavelength = 420 ) )
+rays.append( Ray( Vector( 5, 0), Vector.from_angle(math.radians(180-5)), wavelength = 420 ) )
 
-
-rays = [ray0, ray1, ray2, ray3, ray4, ray5]
 
 
 
