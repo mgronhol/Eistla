@@ -28,7 +28,7 @@ for i in range( -3, 4, 1 ):
 
 
 for ray in rays:
-    path = raytrace( world, ray )
+    path = raytrace_sequential( world, ray )
     #print( path )
     print( "path:")
     for p in path:

@@ -19,7 +19,7 @@ paths = []
 for q in range( -50, 52, 2 ):
     print( ">>> q:", q)
     ray = Ray( Vector( 45, q ), Vector.from_angle(math.radians(180)))
-    path = raytrace( world, ray )
+    path = raytrace_nonsequential( world, ray )
     #print( path )
     print( "path:")
     for p in path:

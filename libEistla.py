@@ -276,8 +276,31 @@ def grating_diffraction( segment, ray, order, lpm, blaze_angle = 0, transmission
 
 
 
-# Traces a ray through the world (a list of optical elements)
-def raytrace( world, ray ):
+
+# Traces a ray through the world (a list of optical elements) in order
+def raytrace_sequential( world, ray ):
+    path = [ray.copy()]
+    current_ray = ray.copy()
+    done = False
+
+    for elem in world:
+        dist = elem.bbox.intersect( current_ray )
+        if dist:
+            next_ray = current_ray.propagate( dist, inplace = False )
+            trace = elem.interact( next_ray )
+            if len(trace) < 1:
+                current_ray.propagate( dist )
+                endray = current_ray.copy()
+                endray.alive = False
+                path.append( endray )
+                return path
+            else:
+                path.extend( trace )
+                current_ray = trace[-1].copy()
+    return path
+
+# Traces a ray through the world (a list of optical elements) without assuming the order
+def raytrace_nonsequential( world, ray ):
     current_idx = -1
     path = [ray.copy()]
     current_ray = ray.copy()

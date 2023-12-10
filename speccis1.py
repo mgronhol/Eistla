@@ -65,7 +65,7 @@ world = [mirror0, grating0, mirror1, detector]
 
 paths = []
 for ray in rays:
-    path = raytrace( world, ray )
+    path = raytrace_sequential( world, ray )
     #print( path )
     print( "path:")
     for p in path:
@@ -94,7 +94,7 @@ def error_function( x ):
 
     paths = []
     for ray in rays:
-        path = raytrace( world, ray )
+        path = raytrace_sequential( world, ray )
         paths.append( path )
 
     quality = quality_function( paths )
@@ -107,7 +107,7 @@ detector = Baffle( Vector( -30, 30+2.5 + result.x), 40, 1, math.radians(90) )
 world = [mirror0, grating0, mirror1, detector]
 paths = []
 for ray in rays:
-    path = raytrace( world, ray )
+    path = raytrace_sequential( world, ray )
     paths.append( path )
 
     

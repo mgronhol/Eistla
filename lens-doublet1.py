@@ -27,7 +27,7 @@ ray3 = Ray( Vector( 20, 5), Vector(-1, 0) )
 rays = [ray0, ray1, ray2, ray3 ]
 
 for ray in rays:
-    path = raytrace( world, ray )
+    path = raytrace_sequential( world, ray )
     #print( path )
     print( "path:")
     for p in path:

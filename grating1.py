@@ -20,7 +20,7 @@ rays = [ray0, ray1, ray2]
 
 paths = []
 for ray in rays:
-    path = raytrace( world, ray )
+    path = raytrace_sequential( world, ray )
     #print( path )
     print( "path:")
     for p in path:
