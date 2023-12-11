@@ -5,7 +5,7 @@
 import math
 import cv2
 import numpy as np
-
+import scipy.optimize
 
 # General purpose 3D vector object, has overloaded arithmetic operators
 class Vector( object ):
@@ -1066,6 +1066,99 @@ class TransmissionGrating( object ):
             return [ray0] 
 
         return [ray0, ray1]
+
+class ApertureStop( object ):
+    def __init__(self, centre, height ) -> None:
+        self.centre = centre
+        self.height = height/2
+
+        self.top = self.centre + Vector( 0, self.height)
+        self.bottom = self.centre - Vector( 0, self.height)
+        
+        self._internal = Ray( self.bottom, ~(self.top - self.bottom))
+
+        self.points = [self.top, self.top + Vector(1e-3, 0), self.bottom, self.bottom + Vector(1e-3, 0)] # slight expansion to reduce numerical instability
+        
+
+        self.bbox = BoundingBox.from_points( self.points )
+
+    def draw( self, ax ):
+
+        ax.plot( [self.centre.x - 1, self.centre.x + 1], [self.centre.y + self.height, self.centre.y + self.height], '-k')
+        ax.plot( [self.centre.x, self.centre.x], [self.centre.y + self.height, self.centre.y + self.height+1], '-k')
+        
+        ax.plot( [self.centre.x - 1, self.centre.x + 1], [self.centre.y - self.height, self.centre.y - self.height], '-k')
+        ax.plot( [self.centre.x, self.centre.x], [self.centre.y - self.height, self.centre.y - self.height-1], '-k')
+        
+
+
+    def interact( self, ray ):
+        out = [ray.copy()] # if the ray hits the aperture stop, it is ok to go through
+        return out
+
+    def crossing_point( self, ray ):
+        s, t = ray_ray_intersect( ray, self._internal)
+        return t
+
+
+    # Marginal ray goes through the edge of the stop
+    def marginal_ray_error_func( self, world, object_position ):
+        def error_func( angle ):
+            ray = Ray( object_position, Vector.from_angle(angle) )
+            path = raytrace_sequential( world, ray )
+            t = self.crossing_point( path[-1] )
+            return abs(t - self.height*2)
+        return error_func
+    
+    # Chief ray goes through the centre of the stop
+    def chief_ray_error_func( self, world, object_position, object_height ):
+        def error_func( angle ):
+            ray = Ray( object_position + Vector(0, object_height), Vector.from_angle(angle) )
+            path = raytrace_sequential( world, ray )
+            t = self.crossing_point( path[-1] )
+            return abs(t - self.height)
+        return error_func
+
+
+    # Find marginal ray hitting this aperture stop, angle_bounds = range of angles (in radian) to search
+    def solve_marginal_ray( self, world, object_position, angle_bounds = (-0.18, 0.18) ):
+        
+        # Select elements on the left hand side of the system relative to stop
+        world_lhs = []
+        for elem in world:
+            if elem is not self:
+                world_lhs.append( elem )
+            else:
+                break
+        
+        # Find marginal ray by minimising the corresponding error function
+        error_func = self.marginal_ray_error_func( world_lhs, object_position )
+        result = scipy.optimize.minimize_scalar( error_func, bounds=angle_bounds, method='bounded' )
+        
+        marginal_ray = Ray( object_position, Vector.from_angle( result.x ) )
+        return marginal_ray
+
+    # Find chief ray hitting centre of this aperture stop, angle_bounds = range of angles (in radian) to search
+    def solve_chief_ray( self, world, object_position, object_height, angle_bounds = (-0.18, 0.18) ):
+        
+        # Select elements on the left hand side of the system relative to stop
+        world_lhs = []
+        for elem in world:
+            if elem is not self:
+                world_lhs.append( elem )
+            else:
+                break
+        
+        # Find chief ray by minimising the corresponding error function
+        error_func = self.chief_ray_error_func( world_lhs, object_position, object_height )
+        result = scipy.optimize.minimize_scalar( error_func, bounds=angle_bounds, method='bounded' )
+        
+        chief_ray = Ray( object_position + Vector(0, object_height), Vector.from_angle( result.x ) )
+        return chief_ray
+
+
+
+
 
 
 def join_lens_surfaces( left, right ):
