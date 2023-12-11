@@ -1168,7 +1168,35 @@ def generate_ray_bundle( world, aperture_stop, object_position ):
 
     return [marginal_ray0, chief_ray, marginal_ray1]
     
+def find_focus_point( world, object_position ):
+    stop = None
+    for elem in world:
+        if isinstance( elem, ApertureStop ):
+            stop = elem
+            break
+    
+    if stop is None:
+        return False
+    
+    rays = generate_ray_bundle( world, stop, object_position )
+    paths = []
+    for ray in rays:
+        path = raytrace_sequential( world, ray )
+        paths.append( path )
+    
+    points = []
 
+    for i in range( len( paths ) ):
+        for j in range( i, len( paths ) ):
+            if i != j:
+                s, t = ray_ray_intersect( paths[i][-1], paths[j][-1] )
+                pos = paths[i][-1].propagate( s, inplace = False )
+                points.append( pos.origin )
+    
+    Xs = [ p.x for p in points ]
+    Ys = [ p.y for p in points ]
+    
+    return Vector( np.mean( Xs ), np.mean( Ys ) ) 
 
 
 
