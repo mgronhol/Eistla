@@ -1077,7 +1077,7 @@ class ApertureStop( object ):
         
         self._internal = Ray( self.bottom, ~(self.top - self.bottom))
 
-        self.points = [self.top, self.top + Vector(1e-3, 0), self.bottom, self.bottom + Vector(1e-3, 0)] # slight expansion to reduce numerical instability
+        self.points = [self.top + Vector(0, 1e-3), self.top + Vector(1e-3, 0) + Vector(0, 1e-3), self.bottom + Vector(0, -1e-3), self.bottom + Vector(1e-3, 0) + Vector(0, -1e-3)] # slight expansion to reduce numerical instability
         
 
         self.bbox = BoundingBox.from_points( self.points )
@@ -1102,12 +1102,15 @@ class ApertureStop( object ):
 
 
     # Marginal ray goes through the edge of the stop
-    def marginal_ray_error_func( self, world, object_position ):
+    def marginal_ray_error_func( self, world, object_position, top = True ):
         def error_func( angle ):
             ray = Ray( object_position, Vector.from_angle(angle) )
             path = raytrace_sequential( world, ray )
             t = self.crossing_point( path[-1] )
-            return abs(t - self.height*2)
+            if top:
+                return abs(t - self.height*2)
+            else:
+                return abs(t)
         return error_func
     
     # Chief ray goes through the centre of the stop
@@ -1121,7 +1124,7 @@ class ApertureStop( object ):
 
 
     # Find marginal ray hitting this aperture stop, angle_bounds = range of angles (in radian) to search
-    def solve_marginal_ray( self, world, object_position, angle_bounds = (-0.18, 0.18) ):
+    def solve_marginal_ray( self, world, object_position, angle_bounds = (-0.8, 0.8), top = True ):
         
         # Select elements on the left hand side of the system relative to stop
         world_lhs = []
@@ -1132,14 +1135,14 @@ class ApertureStop( object ):
                 break
         
         # Find marginal ray by minimising the corresponding error function
-        error_func = self.marginal_ray_error_func( world_lhs, object_position )
+        error_func = self.marginal_ray_error_func( world_lhs, object_position, top )
         result = scipy.optimize.minimize_scalar( error_func, bounds=angle_bounds, method='bounded' )
         
         marginal_ray = Ray( object_position, Vector.from_angle( result.x ) )
         return marginal_ray
 
     # Find chief ray hitting centre of this aperture stop, angle_bounds = range of angles (in radian) to search
-    def solve_chief_ray( self, world, object_position, object_height, angle_bounds = (-0.18, 0.18) ):
+    def solve_chief_ray( self, world, object_position, object_height, angle_bounds = (-0.8, 0.8) ):
         
         # Select elements on the left hand side of the system relative to stop
         world_lhs = []
@@ -1157,6 +1160,14 @@ class ApertureStop( object ):
         return chief_ray
 
 
+def generate_ray_bundle( world, aperture_stop, object_position ):
+
+    marginal_ray0 = aperture_stop.solve_marginal_ray( world, object_position, top = True )
+    marginal_ray1 = aperture_stop.solve_marginal_ray( world, object_position, top = False )
+    chief_ray = aperture_stop.solve_chief_ray( world, object_position, 0 )
+
+    return [marginal_ray0, chief_ray, marginal_ray1]
+    
 
 
 
