@@ -14,6 +14,10 @@ class Vector( object ):
     def from_angle( theta ):
         return Vector( math.cos( theta ), math.sin( theta ) )
 
+    @staticmethod
+    def rodrigues_rotation( k, v, theta ):
+        return (v * math.cos(theta)) + ((k*v)*math.sin(theta)) + k*((k^v)*(1-math.cos(theta)))
+
     def __init__(self, x, y, z = 0.0) -> None:
         self.x = x
         self.y = y
@@ -281,8 +285,7 @@ def grating_diffraction( segment, ray, order, lpm, blaze_angle = 0, transmission
 def raytrace_sequential( world, ray ):
     path = [ray.copy()]
     current_ray = ray.copy()
-    done = False
-
+    
     for elem in world:
         dist = elem.bbox.intersect( current_ray )
         if dist:
@@ -297,6 +300,13 @@ def raytrace_sequential( world, ray ):
             else:
                 path.extend( trace )
                 current_ray = trace[-1].copy()
+        else:
+            current_ray.propagate( dist )
+            endray = current_ray.copy()
+            endray.alive = False
+            path.append( endray )
+            return path
+
     return path
 
 # Traces a ray through the world (a list of optical elements) without assuming the order
@@ -493,11 +503,6 @@ class ConicFunctions( object ):
         return q
         
 
-
-    @staticmethod
-    def rodrigues_rotation( k, v, theta ):
-        return (v * math.cos(theta)) + ((k*v)*math.sin(theta)) + k*((k^v)*(1-math.cos(theta)))
-
     @staticmethod
     def compute_normal( pos, k, c ):
         e = 1e-3
@@ -511,7 +516,70 @@ class ConicFunctions( object ):
         vec_v = Vector( pos.x+e, pos.y, v_z1) - Vector( pos.x-e, pos.y, v_z0)
 
         n = ~(vec_h * vec_v)
-        return ConicFunctions.rodrigues_rotation( Vector(0,1,0), n, math.radians(90) )
+        return Vector.rodrigues_rotation( Vector(0,1,0), n, math.radians(90) )
+
+class AsphericFunctions( object ):
+    @staticmethod
+    def aspheric_z( x, y, k, c, params ):
+        r = x**2 + y**2
+
+        A = 0.0
+        for i in range( len( params ) ):
+            p = 4 + 2*i
+            A += params[i]*r**p
+
+        return c*r / ( 1 + math.sqrt( 1 - (1 + k)*c*c*r ) ) + A
+
+    @staticmethod
+    def error_func( ray, q, k, c, params ):
+        new_ray = ray.propagate(q, inplace = False)
+        #print( "error_func, new_ray:", new_ray )
+        rx = new_ray.origin.x
+        ry = new_ray.origin.y
+        rz = new_ray.origin.z
+
+        cz = AsphericFunctions.aspheric_z( rz, ry, k, c, params )
+        return cz - rx
+
+    @staticmethod
+    def diff_error_func( ray, q, k, c, params ):
+        error0 = AsphericFunctions.error_func( ray, q - 1e-3, k, c, params )
+        error1 = AsphericFunctions.error_func( ray, q + 1e-3, k, c, params )
+
+        
+        #print( "error0:", error0, "error1:", error1)
+
+        return (error1 - error0) / (2e-3)
+
+    @staticmethod
+    def find_intersection( ray, k, c, params, eps=1e-3 ):
+        q = 0
+
+        for i in range( 16 ):
+            A = AsphericFunctions.error_func( ray, q, k, c, params )
+            B = AsphericFunctions.diff_error_func( ray, q, k, c, params )
+            #print( "debug, A:", A, "B:", B)
+            q = q - A / B
+            #print( "-->%i: A=%.3f B=%.3f q=%.3f"%(i,A, B, q))
+            if abs(A) < eps:
+                break
+        return q
+        
+
+    @staticmethod
+    def compute_normal( pos, k, c, params ):
+        e = 1e-3
+        h_z0 = AsphericFunctions.aspheric_z( pos.z, pos.y-e, k, c, params )
+        h_z1 = AsphericFunctions.aspheric_z( pos.z, pos.y+e, k, c, params )
+
+        v_z0 = AsphericFunctions.aspheric_z( pos.z-e, pos.y, k, c, params )
+        v_z1 = AsphericFunctions.aspheric_z( pos.z+e, pos.y, k, c, params )
+
+        vec_h = Vector( pos.x, pos.y+e, h_z1) - Vector( pos.x, pos.y-e, h_z0)
+        vec_v = Vector( pos.x+e, pos.y, v_z1) - Vector( pos.x-e, pos.y, v_z0)
+
+        n = ~(vec_h * vec_v)
+        return Vector.rodrigues_rotation( Vector(0,1,0), n, math.radians(90) )
 
 
 

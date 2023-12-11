@@ -27,7 +27,8 @@ ray3 = Ray( Vector( 20, 5), Vector(-1, 0) )
 rays = [ray0, ray1, ray2, ray3 ]
 
 for ray in rays:
-    path = raytrace_sequential( world, ray )
+    # Rays coming from both sides -> nonsequential or world needs to be reversed
+    path = raytrace_nonsequential( world, ray )
     #print( path )
     print( "path:")
     for p in path:
