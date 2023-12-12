@@ -55,12 +55,13 @@ print( "Paraxial focus point:", focus_pos_parax )
 focus_pos_trig = find_focus_point(world, Vector(-30, 0) )
 print( "Trigonometric focus point:", focus_pos_trig )
 
+
 baffle = Baffle( Vector(focus_pos_parax.x, 0), 30, 1, 0 )
 
 world.append( baffle )
 
 
-ray_bundle = ParaxialApproximation.generate_ray_bundle( world, Vector(-30, 0) )
+ray_bundle = ParaxialApproximation.generate_ray_bundle( world, Vector(-30, 4) )
 
 for ray in ray_bundle:
     paraxial_path = ParaxialApproximation.raytrace( world, ray )
@@ -71,8 +72,9 @@ for ray in ray_bundle:
 
     paths2.append( path )
 
-
-
+tmp_ray = Ray( Vector(-30, -5), Vector.from_angle(0) )
+tmp_path0 = ParaxialApproximation.raytrace( world, tmp_ray )
+tmp_path = [ ParaxialApproximation.to_ray( p ) for p in tmp_path0 ]
 
 
 
@@ -132,6 +134,14 @@ for path in paths2:
 
     plt.plot( pX, pY, 'c+-' )
 
+if True:
+    pX = []
+    pY = []
+    for pt in tmp_path:
+        pX.append( pt.origin.x )
+        pY.append( pt.origin.y )
+
+    plt.plot( pX, pY, 'r+-' )
 
 
 astop.draw( plt )

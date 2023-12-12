@@ -1379,6 +1379,27 @@ class ParaxialApproximation( object ):
         return M, current_x
     
     @staticmethod
+    def compute_inverse_system_matrix( world, wavelength = 550.0 ):
+        M = np.eye(2)
+        
+        current_x = 0
+        
+        for elem in world:
+            R1, T1, R2 = ParaxialApproximation.element_to_matrix( elem, wavelength=wavelength )
+            t = elem.centre.x - current_x - elem.thickness / 2
+            T = np.array([[1, t / 1.0], [0, 1]])
+            
+            M = np.matmul( T, M )
+            M = np.matmul( R1, M )
+            M = np.matmul( T1, M )
+            M = np.matmul( R2, M )
+            
+            current_x += t
+            current_x += elem.thickness
+        
+        return np.linalg.inv(M)
+    
+    @staticmethod
     def solve_marginal_ray( world, object_position, angle_bounds = (-0.2, 0.2), top = True, wavelength = 550.0 ):
         world_lhs = []
         stop = None
@@ -1458,3 +1479,83 @@ class ParaxialApproximation( object ):
         
         
         
+    @staticmethod
+    def get_system_parameters( world, object_position, wavelength = 550.0 ):
+        OpticalAxis = Ray( object_position, Vector.from_angle(0) )
+        M, length = ParaxialApproximation.compute_system_matrix( world, object_position, wavelength=wavelength )
+
+        marginal_ray = ParaxialApproximation.solve_marginal_ray( world, object_position, wavelength=wavelength )
+        chief_ray = ParaxialApproximation.solve_chief_ray( world, object_position, height = 1, wavelength=wavelength )
+
+        Lcollimated0 = np.array([[1], [0]])
+        Lcollimated1 = np.matmul( M, Lcollimated0 )
+        
+        BFD = -Lcollimated1[0][0] / Lcollimated1[1][0]
+
+        invM = ParaxialApproximation.compute_inverse_system_matrix( world, wavelength=wavelength )
+
+        Lrev0 = np.array([[1], [0]])
+        Lrev1 = np.matmul( invM, Lrev0 )
+        
+        FFD = -Lrev1[0][0] / Lrev1[1][0]
+
+        Lmarginal0 = np.array([[0], [marginal_ray.direction.angle()]])
+        Lmarginal1 = np.matmul( M, Lmarginal0 )
+
+        mag_angular = Lmarginal0[1][0] / Lmarginal1[1][0]
+
+
+        marginal_focus = -Lmarginal1[0][0] / Lmarginal1[1][0]
+
+        NA = abs(Lmarginal1[1][0])
+
+
+        Lchief0 = np.array([[chief_ray.origin.y], [chief_ray.direction.angle()]])
+        Lchief1 = np.matmul( M, Lchief0 )
+
+        Tfocus = np.array([[1, marginal_focus], [0, 1]])
+
+        Lchief2 = np.matmul( Tfocus, Lchief1 )
+        Lmarginal2 = np.matmul( Tfocus, Lmarginal1 )
+
+        mag_transverse = Lchief2[0][0] / Lchief0[0][0]
+        
+        power = -Lcollimated1[1][0] / Lcollimated0[0][0]
+        EFL = 1.0 / power
+
+
+        power_f = Lrev1[1][0] / Lrev0[0][0]
+        ffl = -1/power_f
+
+        power_b = Lcollimated1[1][0] / Lcollimated0[0][0]
+        bfl = -1/power_b
+        
+        ms, cs = ray_ray_intersect( OpticalAxis, chief_ray )
+        
+        ep_centre = chief_ray.propagate( cs, inplace = False )
+        ep_top = math.tan( marginal_ray.direction.angle() ) * ms
+        
+        ep_x = ep_centre.origin.x
+        ep_d = ep_top * 2
+        
+
+        Fn = EFL / ep_d 
+
+
+        chief_ray2 = ParaxialApproximation.to_ray((length + EFL, Lchief2))
+        marginal_ray2 = ParaxialApproximation.to_ray((length + EFL, Lmarginal2))
+        
+        chief_ray2.direction = -chief_ray2.direction
+        marginal_ray2.direction = -marginal_ray2.direction
+
+        ms2, cs2 = ray_ray_intersect( OpticalAxis, chief_ray2 )
+        xp_centre = chief_ray2.propagate( cs, inplace = False )
+        xp_x = xp_centre.origin.x
+        
+        dst = (xp_centre.origin - chief_ray2.origin) ^ (-OpticalAxis.direction)
+        
+        xp_top = abs(math.tan( marginal_ray2.direction.angle() )) * dst
+        
+        xp_d = 2*xp_top
+
+        return { "efl": EFL, "bfd": BFD,"bfl": bfl, "ffd": FFD, 'ffl':ffl, 'm(angular)': mag_angular, 'm(transverse)': mag_transverse, "m(pupil)": xp_d/ep_d, "NA": NA, "f/#": Fn, "power": power, "EPx": ep_x, "EPd": ep_d, "XPx": xp_x, "XPd": xp_d }
