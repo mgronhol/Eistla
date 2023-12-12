@@ -1549,7 +1549,7 @@ class ParaxialApproximation( object ):
         marginal_ray2.direction = -marginal_ray2.direction
 
         ms2, cs2 = ray_ray_intersect( OpticalAxis, chief_ray2 )
-        xp_centre = chief_ray2.propagate( cs, inplace = False )
+        xp_centre = chief_ray2.propagate( cs2, inplace = False )
         xp_x = xp_centre.origin.x
         
         dst = (xp_centre.origin - chief_ray2.origin) ^ (-OpticalAxis.direction)
