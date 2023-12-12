@@ -726,6 +726,7 @@ class ConicMirror( object ):
         self.k = k
         h2 = height / 2
         t2 = thickness / 2
+        self.n = -1
 
         self.lhs_centre = Vector( -t2, 0 )
         self.rhs_centre = Vector( t2, 0)
@@ -916,6 +917,7 @@ class Baffle( object ):
         self.height = height
         self.thickness = thickness
         self.k = 0
+        self.n = 1.0
         h2 = height / 2
         t2 = thickness / 2
 
@@ -1071,6 +1073,7 @@ class ApertureStop( object ):
     def __init__(self, centre, height ) -> None:
         self.centre = centre
         self.height = height/2
+        self.thickness = 0
 
         self.top = self.centre + Vector( 0, self.height)
         self.bottom = self.centre - Vector( 0, self.height)
@@ -1292,3 +1295,166 @@ def read_from_zmx( fn, position, theta ):
 
     return output
 
+
+class ParaxialApproximation( object ):
+
+    @staticmethod
+    def to_ray( paraxial_ray ):
+        return Ray( Vector(paraxial_ray[0], paraxial_ray[1][0][0]), Vector.from_angle( paraxial_ray[1][1][0] ) )
+
+    @staticmethod
+    def element_to_matrix( element, wavelength = 550.0 ):
+        if isinstance( element, ApertureStop ):
+            R1 = np.eye(2)
+            T1 = np.eye(2)
+            R2 = np.eye(2)
+            return R1, T1, R2
+            
+        
+        
+        if isinstance( element.n, float ):
+            n = element.n
+        else:
+            n = element.n( wavelength )
+        
+        power1 = (n - 1.0) / element.r1
+        power2 = (1.0 - n) / element.r2
+        
+        R1 = np.array([[1,0], [-power1, 1]])
+        T1 = np.array([[1, element.thickness / n], [0, 1]])
+        R2 = np.array([[1,0], [-power2, 1]])
+        
+        return R1, T1, R2
+    
+    @staticmethod
+    def raytrace( world, ray ):
+        path = []
+        
+        w0 = ray.direction.angle() * 1.0
+        y0 = ray.origin.y
+        L = np.array([[y0], [w0]])
+        
+        current_x = ray.origin.x
+        path.append((current_x, L))
+
+        
+        for elem in world:
+            R1, T1, R2 = ParaxialApproximation.element_to_matrix( elem, ray.wavelength )
+            
+            t = elem.centre.x - current_x - elem.thickness / 2
+            T = np.array([[1, t / 1.0], [0, 1]])
+
+            L = np.matmul( T, L )
+            current_x += t
+            L = np.matmul( R1,  L)
+            path.append( (current_x, L))
+
+            L = np.matmul( T1, L )
+
+            current_x += elem.thickness
+            L = np.matmul( R2,  L)
+            path.append( (current_x, L))
+        
+        return path
+            
+    @staticmethod
+    def compute_system_matrix( world, object_position, wavelength = 550.0 ):
+        M = np.eye(2)
+        
+        current_x = object_position.x
+        
+        for elem in world:
+            R1, T1, R2 = ParaxialApproximation.element_to_matrix( elem, wavelength=wavelength )
+            t = elem.centre.x - current_x - elem.thickness / 2
+            T = np.array([[1, t / 1.0], [0, 1]])
+            
+            M = np.matmul( T, M )
+            M = np.matmul( R1, M )
+            M = np.matmul( T1, M )
+            M = np.matmul( R2, M )
+            
+            current_x += t
+            current_x += elem.thickness
+        
+        return M, current_x
+    
+    @staticmethod
+    def solve_marginal_ray( world, object_position, angle_bounds = (-0.2, 0.2), top = True, wavelength = 550.0 ):
+        world_lhs = []
+        stop = None
+        for elem in world:
+            world_lhs.append( elem )
+            if isinstance( elem, ApertureStop ):
+                stop = elem
+                break
+        M, _ = ParaxialApproximation.compute_system_matrix( world_lhs, object_position, wavelength=wavelength )
+
+        def error_func( ray_angle ):
+            L0 = np.array([[object_position.y], [ray_angle]])
+            L1 = np.matmul( M, L0 )
+            if top:
+                return abs( +stop.height - L1[0][0] )
+            else:
+                return abs( -stop.height - L1[0][0] )
+
+        result = scipy.optimize.minimize_scalar( error_func, bounds=angle_bounds, method='bounded'  )
+        
+        return Ray( object_position, Vector.from_angle( result.x ), wavelength=wavelength )
+
+
+    @staticmethod
+    def solve_chief_ray( world, object_position, height, angle_bounds = (-0.2, 0.2), wavelength = 550.0 ):
+        world_lhs = []
+        for elem in world:
+            world_lhs.append( elem )
+            if isinstance( elem, ApertureStop ):
+                break
+        M, _ = ParaxialApproximation.compute_system_matrix( world_lhs, object_position, wavelength=wavelength )
+
+        def error_func( ray_angle ):
+            L0 = np.array([[object_position.y + height], [ray_angle]])
+            L1 = np.matmul( M, L0 )
+            return abs( L1[0][0] )
+
+        result = scipy.optimize.minimize_scalar( error_func, bounds=angle_bounds, method='bounded'  )
+        
+        return Ray( object_position + Vector(0, height), Vector.from_angle( result.x ), wavelength=wavelength)
+
+
+    @staticmethod
+    def generate_ray_bundle( world, object_position, angle_bounds = (-0.2, 0.2), wavelength = 550.0 ):
+        
+        marginal_ray0 = ParaxialApproximation.solve_marginal_ray( world, object_position, angle_bounds=angle_bounds, wavelength=wavelength, top = True )
+        marginal_ray1 = ParaxialApproximation.solve_marginal_ray( world, object_position, angle_bounds=angle_bounds, wavelength=wavelength, top = False )
+        chief_ray = ParaxialApproximation.solve_chief_ray( world, object_position, 0, angle_bounds=angle_bounds, wavelength=wavelength)
+
+        return marginal_ray0, chief_ray, marginal_ray1
+    
+    @staticmethod
+    def find_focus_point( world, object_position, wavelength = 550.0 ):
+        rays = ParaxialApproximation.generate_ray_bundle( world, object_position, wavelength = wavelength )
+
+        results = []
+        for ray in rays:
+            path = ParaxialApproximation.raytrace( world, ray )
+
+            results.append( ParaxialApproximation.to_ray( path[-1] ) )
+            print( "parax, ffp:", results[-1])
+
+        points = []
+
+        for i in range( len( results ) ):
+            for j in range( i, len( results ) ):
+                if i != j:
+                    s, t = ray_ray_intersect( results[i], results[j] )
+                    pos = results[i].propagate( s, inplace = False )
+                    points.append( pos.origin )
+        
+        Xs = [ p.x for p in points ]
+        Ys = [ p.y for p in points ]
+        
+        return Vector( np.mean( Xs ), np.mean( Ys ) )     
+                
+        
+        
+        
