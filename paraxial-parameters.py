@@ -11,7 +11,7 @@ import pprint
 
 lens0 = ConicLens( Vector( 0, 0), 30, 7, 40, -40, 0, 1.5, 0 )
 
-astop = ApertureStop( Vector (-4, 0), 30 )
+astop = ApertureStop( Vector (-3.5, 0), 30 )
 
 world = [astop, lens0]
 

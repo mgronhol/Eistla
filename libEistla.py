@@ -1358,12 +1358,15 @@ class ParaxialApproximation( object ):
         return path
             
     @staticmethod
-    def compute_system_matrix( world, object_position, wavelength = 550.0 ):
+    def compute_system_matrix( world, object_position, wavelength = 550.0, skip_virtual = False ):
         M = np.eye(2)
         
         current_x = object_position.x
         
         for elem in world:
+            if skip_virtual:
+                if isinstance(elem, ApertureStop):
+                    continue
             R1, T1, R2 = ParaxialApproximation.element_to_matrix( elem, wavelength=wavelength )
             t = elem.centre.x - current_x - elem.thickness / 2
             T = np.array([[1, t / 1.0], [0, 1]])
@@ -1379,14 +1382,23 @@ class ParaxialApproximation( object ):
         return M, current_x
     
     @staticmethod
-    def compute_inverse_system_matrix( world, wavelength = 550.0 ):
+    def compute_inverse_system_matrix( world, wavelength = 550.0, skip_virtual = False ):
         M = np.eye(2)
         
         current_x = 0
-        
+        first = True
+
         for elem in world:
+            if skip_virtual:
+                if isinstance(elem, ApertureStop):
+                    continue
+
             R1, T1, R2 = ParaxialApproximation.element_to_matrix( elem, wavelength=wavelength )
-            t = elem.centre.x - current_x - elem.thickness / 2
+            if first:
+                first = False
+                t = 0
+            else:
+                t = elem.centre.x - current_x - elem.thickness / 2
             T = np.array([[1, t / 1.0], [0, 1]])
             
             M = np.matmul( T, M )
@@ -1460,8 +1472,7 @@ class ParaxialApproximation( object ):
             path = ParaxialApproximation.raytrace( world, ray )
 
             results.append( ParaxialApproximation.to_ray( path[-1] ) )
-            print( "parax, ffp:", results[-1])
-
+     
         points = []
 
         for i in range( len( results ) ):
@@ -1482,7 +1493,7 @@ class ParaxialApproximation( object ):
     @staticmethod
     def get_system_parameters( world, object_position, wavelength = 550.0 ):
         OpticalAxis = Ray( object_position, Vector.from_angle(0) )
-        M, length = ParaxialApproximation.compute_system_matrix( world, object_position, wavelength=wavelength )
+        M, length = ParaxialApproximation.compute_system_matrix( world, object_position, wavelength=wavelength, skip_virtual=True )
 
         marginal_ray = ParaxialApproximation.solve_marginal_ray( world, object_position, wavelength=wavelength )
         chief_ray = ParaxialApproximation.solve_chief_ray( world, object_position, height = 1, wavelength=wavelength )
@@ -1492,17 +1503,21 @@ class ParaxialApproximation( object ):
         
         BFD = -Lcollimated1[0][0] / Lcollimated1[1][0]
 
-        invM = ParaxialApproximation.compute_inverse_system_matrix( world, wavelength=wavelength )
+        invM = ParaxialApproximation.compute_inverse_system_matrix( world, wavelength=wavelength, skip_virtual=True )
 
         Lrev0 = np.array([[1], [0]])
         Lrev1 = np.matmul( invM, Lrev0 )
-        
+
+       
+        M_tmp = np.matmul(M, np.array([[1, object_position.x], [0, 1]]))
+
+     
         FFD = -Lrev1[0][0] / Lrev1[1][0]
 
         Lmarginal0 = np.array([[0], [marginal_ray.direction.angle()]])
         Lmarginal1 = np.matmul( M, Lmarginal0 )
 
-        mag_angular = Lmarginal0[1][0] / Lmarginal1[1][0]
+        mag_angular = Lmarginal1[1][0] / Lmarginal0[1][0]
 
 
         marginal_focus = -Lmarginal1[0][0] / Lmarginal1[1][0]
