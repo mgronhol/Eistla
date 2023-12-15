@@ -1501,17 +1501,16 @@ class ParaxialApproximation( object ):
         Lcollimated0 = np.array([[1], [0]])
         Lcollimated1 = np.matmul( M, Lcollimated0 )
         
+        # Back focal distance
         BFD = -Lcollimated1[0][0] / Lcollimated1[1][0]
 
         invM = ParaxialApproximation.compute_inverse_system_matrix( world, wavelength=wavelength, skip_virtual=True )
 
+        # Tracing back to front
         Lrev0 = np.array([[1], [0]])
         Lrev1 = np.matmul( invM, Lrev0 )
 
-       
-        M_tmp = np.matmul(M, np.array([[1, object_position.x], [0, 1]]))
-
-     
+        # Front focal distance
         FFD = -Lrev1[0][0] / Lrev1[1][0]
 
         Lmarginal0 = np.array([[0], [marginal_ray.direction.angle()]])
@@ -1539,12 +1538,16 @@ class ParaxialApproximation( object ):
         EFL = 1.0 / power
 
 
+        # front focal length
         power_f = Lrev1[1][0] / Lrev0[0][0]
         ffl = -1/power_f
 
+        # back focal length
         power_b = Lcollimated1[1][0] / Lcollimated0[0][0]
         bfl = -1/power_b
         
+
+        # Entrance pupil
         ms, cs = ray_ray_intersect( OpticalAxis, chief_ray )
         
         ep_centre = chief_ray.propagate( cs, inplace = False )
@@ -1554,11 +1557,13 @@ class ParaxialApproximation( object ):
         ep_d = ep_top * 2
         
 
+        # F-number
         Fn = EFL / ep_d 
 
 
-        chief_ray2 = ParaxialApproximation.to_ray((length + EFL, Lchief2))
-        marginal_ray2 = ParaxialApproximation.to_ray((length + EFL, Lmarginal2))
+        # Exit pupil
+        chief_ray2 = ParaxialApproximation.to_ray((length + BFD, Lchief2))
+        marginal_ray2 = ParaxialApproximation.to_ray((length + BFD, Lmarginal2))
         
         chief_ray2.direction = -chief_ray2.direction
         marginal_ray2.direction = -marginal_ray2.direction
@@ -1572,5 +1577,12 @@ class ParaxialApproximation( object ):
         xp_top = abs(math.tan( marginal_ray2.direction.angle() )) * dst
         
         xp_d = 2*xp_top
+
+
+        
+        # Still working out which is the best way to compute these
+        ep_x = Lchief0[0][0] / Lchief0[1][0] - object_position.x
+        xp_x = Lchief2[0][0] / Lchief2[1][0] - marginal_focus
+
 
         return { "efl": EFL, "bfd": BFD,"bfl": bfl, "ffd": FFD, 'ffl':ffl, 'm(angular)': mag_angular, 'm(transverse)': mag_transverse, "m(pupil)": xp_d/ep_d, "NA": NA, "f/#": Fn, "power": power, "EPx": ep_x, "EPd": ep_d, "XPx": xp_x, "XPd": xp_d }
