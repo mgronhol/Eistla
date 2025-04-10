@@ -1105,9 +1105,9 @@ class ApertureStop( object ):
 
 
     # Marginal ray goes through the edge of the stop
-    def marginal_ray_error_func( self, world, object_position, top = True ):
+    def marginal_ray_error_func( self, world, object_position, top = True, wavelength=550.0 ):
         def error_func( angle ):
-            ray = Ray( object_position, Vector.from_angle(angle) )
+            ray = Ray( object_position, Vector.from_angle(angle), wavelength=wavelength )
             path = raytrace_sequential( world, ray )
             t = self.crossing_point( path[-1] )
             if top:
@@ -1117,9 +1117,9 @@ class ApertureStop( object ):
         return error_func
     
     # Chief ray goes through the centre of the stop
-    def chief_ray_error_func( self, world, object_position, object_height ):
+    def chief_ray_error_func( self, world, object_position, object_height, wavelength=550.0 ):
         def error_func( angle ):
-            ray = Ray( object_position + Vector(0, object_height), Vector.from_angle(angle) )
+            ray = Ray( object_position + Vector(0, object_height), Vector.from_angle(angle), wavelength=wavelength )
             path = raytrace_sequential( world, ray )
             t = self.crossing_point( path[-1] )
             return abs(t - self.height)
@@ -1127,7 +1127,7 @@ class ApertureStop( object ):
 
 
     # Find marginal ray hitting this aperture stop, angle_bounds = range of angles (in radian) to search
-    def solve_marginal_ray( self, world, object_position, angle_bounds = (-0.8, 0.8), top = True ):
+    def solve_marginal_ray( self, world, object_position, angle_bounds = (-0.8, 0.8), top = True, wavelength=550.0 ):
         
         # Select elements on the left hand side of the system relative to stop
         world_lhs = []
@@ -1138,14 +1138,14 @@ class ApertureStop( object ):
                 break
         
         # Find marginal ray by minimising the corresponding error function
-        error_func = self.marginal_ray_error_func( world_lhs, object_position, top )
+        error_func = self.marginal_ray_error_func( world_lhs, object_position, top, wavelength=wavelength )
         result = scipy.optimize.minimize_scalar( error_func, bounds=angle_bounds, method='bounded' )
         
-        marginal_ray = Ray( object_position, Vector.from_angle( result.x ) )
+        marginal_ray = Ray( object_position, Vector.from_angle( result.x ), wavelength = wavelength )
         return marginal_ray
 
     # Find chief ray hitting centre of this aperture stop, angle_bounds = range of angles (in radian) to search
-    def solve_chief_ray( self, world, object_position, object_height, angle_bounds = (-0.8, 0.8) ):
+    def solve_chief_ray( self, world, object_position, object_height, angle_bounds = (-0.8, 0.8), wavelength=550.0 ):
         
         # Select elements on the left hand side of the system relative to stop
         world_lhs = []
@@ -1156,22 +1156,22 @@ class ApertureStop( object ):
                 break
         
         # Find chief ray by minimising the corresponding error function
-        error_func = self.chief_ray_error_func( world_lhs, object_position, object_height )
+        error_func = self.chief_ray_error_func( world_lhs, object_position, object_height, wavelength=wavelength )
         result = scipy.optimize.minimize_scalar( error_func, bounds=angle_bounds, method='bounded' )
         
-        chief_ray = Ray( object_position + Vector(0, object_height), Vector.from_angle( result.x ) )
+        chief_ray = Ray( object_position + Vector(0, object_height), Vector.from_angle( result.x ), wavelength=wavelength )
         return chief_ray
 
 
-def generate_ray_bundle( world, aperture_stop, object_position ):
+def generate_ray_bundle( world, aperture_stop, object_position, wavelength=550.0 ):
 
-    marginal_ray0 = aperture_stop.solve_marginal_ray( world, object_position, top = True )
-    marginal_ray1 = aperture_stop.solve_marginal_ray( world, object_position, top = False )
-    chief_ray = aperture_stop.solve_chief_ray( world, object_position, 0 )
+    marginal_ray0 = aperture_stop.solve_marginal_ray( world, object_position, top = True, wavelength=wavelength )
+    marginal_ray1 = aperture_stop.solve_marginal_ray( world, object_position, top = False, wavelength=wavelength )
+    chief_ray = aperture_stop.solve_chief_ray( world, object_position, 0, wavelength=wavelength )
 
     return [marginal_ray0, chief_ray, marginal_ray1]
     
-def find_focus_point( world, object_position ):
+def find_focus_point( world, object_position, wavelength=550.0, method = None ):
     stop = None
     for elem in world:
         if isinstance( elem, ApertureStop ):
@@ -1181,7 +1181,7 @@ def find_focus_point( world, object_position ):
     if stop is None:
         return False
     
-    rays = generate_ray_bundle( world, stop, object_position )
+    rays = generate_ray_bundle( world, stop, object_position, wavelength = wavelength )
     paths = []
     for ray in rays:
         path = raytrace_sequential( world, ray )
@@ -1198,8 +1198,10 @@ def find_focus_point( world, object_position ):
     
     Xs = [ p.x for p in points ]
     Ys = [ p.y for p in points ]
-    
-    return Vector( np.mean( Xs ), np.mean( Ys ) ) 
+    if method is not None:
+        return Vector( method( Xs ), method( Ys ) )
+    else:
+        return Vector( np.mean( Xs ), np.mean( Ys ) )
 
 
 
